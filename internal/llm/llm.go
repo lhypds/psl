@@ -1,9 +1,14 @@
-// Package llm talks to the chat APIs that resolve a PSL slot.
+// Package llm talks to the chat API that resolves a PSL slot.
+//
+// There is one wire protocol: OpenAI's chat completions. Every provider psl
+// supports speaks it — Anthropic through its OpenAI-compatible endpoint — so a
+// model differs from another only by base URL, key, and id.
 package llm
 
 import (
 	"bytes"
 	"context"
+	"encoding/base64"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,6 +24,9 @@ const DefaultMaxTokens = 8192
 
 // Timeout is the per-request deadline.
 const Timeout = 5 * time.Minute
+
+// chatPath is the endpoint on every base URL that psl posts to.
+const chatPath = "/v1/chat/completions"
 
 // Image is visual context handed to the slot being resolved.
 type Image struct {
@@ -54,33 +62,45 @@ type Client interface {
 	Complete(ctx context.Context, req Request) (*Response, error)
 }
 
-// Endpoint paths, per protocol.
-const (
-	anthropicPath = "/v1/messages"
-	openAIPath    = "/v1/chat/completions"
-)
-
 // Endpoint reports the URL a model's requests are sent to.
 func Endpoint(m *pslrc.Model) string {
-	switch m.Protocol() {
-	case pslrc.APIAnthropic:
-		return m.BaseURL + anthropicPath
-	default:
-		return m.BaseURL + openAIPath
+	return m.BaseURL + chatPath
+}
+
+// Body renders the JSON an endpoint receives for req. Credentials are not in
+// it: those travel in headers.
+//
+// This is what the log records, so an attached image is reduced to a note of
+// its size; megabytes of base64 on one line would make the log unreadable.
+func Body(req Request) (json.RawMessage, error) {
+	data, err := json.Marshal(openAIBody(elideImage(req)))
+	if err != nil {
+		return nil, fmt.Errorf("encode request body: %w", err)
 	}
+	return data, nil
+}
+
+// elideImage swaps an image's payload for a note of what it weighed, which is
+// all a log can usefully keep of it.
+func elideImage(req Request) Request {
+	if req.Image == nil {
+		return req
+	}
+	image := *req.Image
+	image.Base64 = fmt.Sprintf("…%d bytes elided…", base64Size(image.Base64))
+	req.Image = &image
+	return req
+}
+
+// base64Size is the number of bytes a base64 payload decodes to. DecodedLen
+// alone only bounds it, since it cannot see the padding.
+func base64Size(payload string) int {
+	return base64.StdEncoding.DecodedLen(len(payload)) - strings.Count(payload, "=")
 }
 
 // New builds the client for a configured model.
-func New(m *pslrc.Model) (Client, error) {
-	base := &base{baseURL: m.BaseURL, apiKey: m.APIKey, http: &http.Client{Timeout: Timeout}}
-	switch m.Protocol() {
-	case pslrc.APIAnthropic:
-		return &anthropicClient{base}, nil
-	case pslrc.APIOpenAI:
-		return &openAIClient{base}, nil
-	default:
-		return nil, fmt.Errorf("unsupported api %q", m.Protocol())
-	}
+func New(m *pslrc.Model) Client {
+	return &openAIClient{&base{baseURL: m.BaseURL, apiKey: m.APIKey, http: &http.Client{Timeout: Timeout}}}
 }
 
 type base struct {

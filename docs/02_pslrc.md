@@ -53,7 +53,9 @@ Besides `base_url` and `api_key`, a section accepts:
 | key | meaning |
 | --- | --- |
 | `model` | model id sent to the API, when it differs from the section name |
-| `api` | wire protocol, `anthropic` or `openai`; inferred from `base_url` otherwise |
 | `max_tokens` | output limit for one slot (default 8192) |
+| `api` | ignored; it used to pick a wire protocol, and there is only one now |
+
+Every endpoint is spoken to identically — `POST <base_url>/v1/chat/completions` with the key as a bearer token, the OpenAI chat completions protocol. Anthropic serves it too, at its own base URL, so a model is configured by URL, key, and id alone; anything else that speaks it works the same way, a local server included.
 
 `#` and `;` start a comment.

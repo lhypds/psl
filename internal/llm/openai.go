@@ -46,7 +46,18 @@ type openAIResponse struct {
 	} `json:"error"`
 }
 
-func (c *openAIClient) Complete(ctx context.Context, req Request) (*Response, error) {
+// openAIBody is the request the chat completions API receives for req.
+func openAIBody(req Request) openAIRequest {
+	return openAIRequest{
+		Model:               req.Model,
+		MaxCompletionTokens: maxTokens(req),
+		Messages:            openAIMessages(req),
+	}
+}
+
+// openAIMessages is the message list for req. The system prompt is a message
+// of its own, and an image rides along as a data: URL.
+func openAIMessages(req Request) []openAIMessage {
 	messages := make([]openAIMessage, 0, 2)
 	if req.System != "" {
 		messages = append(messages, openAIMessage{Role: "system", Content: req.System})
@@ -61,18 +72,17 @@ func (c *openAIClient) Complete(ctx context.Context, req Request) (*Response, er
 			{Type: "text", Text: req.Prompt},
 		}})
 	}
+	return messages
+}
 
-	body := openAIRequest{
-		Model:               req.Model,
-		MaxCompletionTokens: maxTokens(req),
-		Messages:            messages,
-	}
+func (c *openAIClient) Complete(ctx context.Context, req Request) (*Response, error) {
+	body := openAIBody(req)
 
 	header := http.Header{}
 	header.Set("Authorization", "Bearer "+c.apiKey)
 
 	var resp openAIResponse
-	if err := c.post(ctx, openAIPath, header, body, &resp); err != nil {
+	if err := c.post(ctx, chatPath, header, body, &resp); err != nil {
 		return nil, err
 	}
 	if resp.Error != nil {

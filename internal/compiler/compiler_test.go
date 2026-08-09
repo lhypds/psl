@@ -62,7 +62,7 @@ func compile(t *testing.T, path string, client llm.Client) (*Result, error) {
 	return Compile(context.Background(), Options{
 		Path:      path,
 		Config:    testConfig(t),
-		NewClient: func(*pslrc.Model) (llm.Client, error) { return client, nil },
+		NewClient: func(*pslrc.Model) llm.Client { return client },
 	})
 }
 
@@ -148,7 +148,7 @@ func TestCompilePassesImage(t *testing.T) {
 		Path:      path,
 		Config:    testConfig(t),
 		Image:     image,
-		NewClient: func(*pslrc.Model) (llm.Client, error) { return client, nil },
+		NewClient: func(*pslrc.Model) llm.Client { return client },
 	}); err != nil {
 		t.Fatalf("Compile() error: %v", err)
 	}
@@ -270,7 +270,7 @@ func compileWithLog(t *testing.T, path string, client llm.Client, image *llm.Ima
 		Image:     image,
 		Log:       logger,
 		Version:   "9.9.9",
-		NewClient: func(*pslrc.Model) (llm.Client, error) { return client, nil },
+		NewClient: func(*pslrc.Model) llm.Client { return client },
 	})
 	return logger, err
 }
@@ -305,14 +305,11 @@ func TestCompileLogsTheRequest(t *testing.T) {
 	if e.Model.Name != "claude-opus-5" || e.Model.ID != "claude-opus-5" {
 		t.Errorf("Model = %+v, want the resolved model", e.Model)
 	}
-	if e.Model.BaseURL != "https://api.anthropic.com" || e.Model.API != "anthropic" {
-		t.Errorf("Model = %+v, want the base URL and protocol", e.Model)
+	if e.Model.BaseURL != "https://api.anthropic.com" {
+		t.Errorf("Model = %+v, want the base URL", e.Model)
 	}
-	if e.Model.Endpoint != "https://api.anthropic.com/v1/messages" {
+	if e.Model.Endpoint != "https://api.anthropic.com/v1/chat/completions" {
 		t.Errorf("Endpoint = %q, want the URL the request went to", e.Model.Endpoint)
-	}
-	if e.Request.System == "" || !strings.Contains(e.Request.Prompt, "return the answer") {
-		t.Errorf("Request = %+v, want the system prompt and the prompt", e.Request)
 	}
 	if e.Response == nil || e.Response.Text != "return 42" || e.Response.StopReason != "end_turn" {
 		t.Errorf("Response = %+v, want the model's reply", e.Response)
@@ -323,9 +320,41 @@ func TestCompileLogsTheRequest(t *testing.T) {
 	if e.Error != "" {
 		t.Errorf("Error = %q, want empty on success", e.Error)
 	}
-	// The image is recorded by shape only — never its bytes.
-	if e.Request.Image == nil || e.Request.Image.MediaType != "image/png" || e.Request.Image.Bytes != 5 {
-		t.Errorf("Image = %+v, want the media type and decoded size", e.Request.Image)
+	// The request is logged as the body that went over the wire, so everything
+	// psl composed sits in the messages: the system prompt is the first one.
+	var body struct {
+		Model               string `json:"model"`
+		MaxCompletionTokens int    `json:"max_completion_tokens"`
+		Messages            []struct {
+			Role    string          `json:"role"`
+			Content json.RawMessage `json:"content"`
+		} `json:"messages"`
+	}
+	if err := json.Unmarshal(e.Request, &body); err != nil {
+		t.Fatalf("decode request %s: %v", e.Request, err)
+	}
+	if body.Model != "claude-opus-5" || body.MaxCompletionTokens == 0 {
+		t.Errorf("Request = %s, want the model id and an output limit", e.Request)
+	}
+	if len(body.Messages) != 2 || body.Messages[0].Role != "system" || body.Messages[1].Role != "user" {
+		t.Fatalf("Request = %s, want a system message then the user message", e.Request)
+	}
+	var parts []struct {
+		Type     string `json:"type"`
+		Text     string `json:"text"`
+		ImageURL *struct {
+			URL string `json:"url"`
+		} `json:"image_url"`
+	}
+	if err := json.Unmarshal(body.Messages[1].Content, &parts); err != nil {
+		t.Fatalf("decode user content %s: %v", body.Messages[1].Content, err)
+	}
+	if len(parts) != 2 || parts[0].Type != "image_url" || !strings.Contains(parts[1].Text, "return the answer") {
+		t.Errorf("Request = %s, want the image then the prompt", e.Request)
+	}
+	// The image is recorded by media type and size only — never its bytes.
+	if parts[0].ImageURL == nil || parts[0].ImageURL.URL != "data:image/png;base64,…5 bytes elided…" {
+		t.Errorf("Request = %s, want the image's media type and decoded size", e.Request)
 	}
 	if strings.Contains(string(mustReadFile(t, logger.Path())), "aGVsbG8=") {
 		t.Error("the log must not contain the image payload")
@@ -349,6 +378,9 @@ func TestCompileLogsFailures(t *testing.T) {
 	if entries[0].Response != nil {
 		t.Errorf("Response = %+v, want none when the call failed", entries[0].Response)
 	}
+	if !strings.Contains(string(entries[0].Request), `"messages"`) {
+		t.Errorf("Request = %s, want what was sent recorded even when the call failed", entries[0].Request)
+	}
 }
 
 func TestCompileLogsEachRunOnItsOwnLine(t *testing.T) {
@@ -362,7 +394,7 @@ func TestCompileLogsEachRunOnItsOwnLine(t *testing.T) {
 			Path:      path,
 			Config:    testConfig(t),
 			Log:       logger,
-			NewClient: func(*pslrc.Model) (llm.Client, error) { return &fakeClient{reply: reply}, nil },
+			NewClient: func(*pslrc.Model) llm.Client { return &fakeClient{reply: reply} },
 		}); err != nil {
 			t.Fatal(err)
 		}

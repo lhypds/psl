@@ -30,14 +30,6 @@ import (
 // Name is the configuration file's fixed name.
 const Name = ".pslrc"
 
-// API selects the wire protocol used to talk to a model's endpoint.
-type API string
-
-const (
-	APIAnthropic API = "anthropic"
-	APIOpenAI    API = "openai"
-)
-
 // Environment variables holding a provider API key.
 const (
 	EnvOpenAIKey    = "OPENAI_API_KEY"
@@ -51,10 +43,9 @@ var providers = []struct {
 	Env     string
 	Model   string
 	BaseURL string
-	API     API
 }{
-	{EnvOpenAIKey, "gpt-5.6", "https://api.openai.com", APIOpenAI},
-	{EnvAnthropicKey, "claude-opus-5", "https://api.anthropic.com", APIAnthropic},
+	{EnvOpenAIKey, "gpt-5.6", "https://api.openai.com"},
+	{EnvAnthropicKey, "claude-opus-5", "https://api.anthropic.com"},
 }
 
 // Model is one `[section]` of the configuration.
@@ -63,7 +54,6 @@ type Model struct {
 	BaseURL   string
 	APIKey    string
 	ModelID   string // `model=` override when the API's id differs from the section name
-	API       API    // `api=` override, otherwise inferred from BaseURL
 	MaxTokens int    // `max_tokens=`, 0 means the package default
 	Origin    string // .pslrc path, or "$VAR" when the environment supplied it
 }
@@ -135,7 +125,6 @@ func (c *Config) ApplyEnv() {
 				Name:    p.Model,
 				BaseURL: p.BaseURL,
 				APIKey:  key,
-				API:     p.API,
 				Origin:  "$" + p.Env,
 			}
 		}
@@ -147,19 +136,19 @@ func (c *Config) ApplyEnv() {
 	// provider it talks to.
 	for _, m := range c.Models {
 		if m.APIKey == "" && m.BaseURL != "" {
-			m.APIKey = os.Getenv(envKeyFor(m.Protocol()))
+			m.APIKey = os.Getenv(envKeyFor(m.BaseURL))
 		}
 	}
 }
 
-// envKeyFor names the environment variable holding the key for a protocol.
-func envKeyFor(api API) string {
-	for _, p := range providers {
-		if p.API == api {
-			return p.Env
-		}
+// envKeyFor names the environment variable holding the key an endpoint takes.
+// Anything unrecognized is assumed to want an OpenAI key, since that is the
+// protocol every endpoint speaks.
+func envKeyFor(baseURL string) string {
+	if strings.Contains(strings.ToLower(baseURL), "anthropic") {
+		return EnvAnthropicKey
 	}
-	return ""
+	return EnvOpenAIKey
 }
 
 func searchPath(dir string) []string {
@@ -230,14 +219,9 @@ func (m *Model) set(key, value string) error {
 	case "model":
 		m.ModelID = value
 	case "api":
-		switch API(strings.ToLower(value)) {
-		case APIAnthropic:
-			m.API = APIAnthropic
-		case APIOpenAI:
-			m.API = APIOpenAI
-		default:
-			return fmt.Errorf("api must be %q or %q, got %q", APIAnthropic, APIOpenAI, value)
-		}
+		// Accepted and ignored. It used to pick a wire protocol; there is only
+		// one now, so an existing .pslrc keeps working rather than failing on a
+		// key that no longer decides anything.
 	case "max_tokens":
 		n, err := strconv.Atoi(value)
 		if err != nil || n <= 0 {
@@ -269,7 +253,7 @@ func (c *Config) Resolve(name string) (*Model, error) {
 	}
 	if m.APIKey == "" {
 		return nil, fmt.Errorf("model %q has no api_key in %s; set it there or export %s",
-			name, m.Origin, envKeyFor(m.Protocol()))
+			name, m.Origin, envKeyFor(m.BaseURL))
 	}
 	if m.BaseURL == "" {
 		return nil, fmt.Errorf("model %q has no base_url in %s", name, m.Origin)
@@ -298,17 +282,6 @@ func (c *Config) modelNames() string {
 	}
 	slices.Sort(names)
 	return strings.Join(names, ", ")
-}
-
-// Protocol reports the wire protocol to use for this model.
-func (m *Model) Protocol() API {
-	if m.API != "" {
-		return m.API
-	}
-	if strings.Contains(strings.ToLower(m.BaseURL), "anthropic") {
-		return APIAnthropic
-	}
-	return APIOpenAI
 }
 
 // ID is the model identifier sent to the API.

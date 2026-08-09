@@ -4,12 +4,10 @@ package compiler
 
 import (
 	"context"
-	"encoding/base64"
 	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
-	"strings"
 	"time"
 
 	"psl/internal/llm"
@@ -31,7 +29,7 @@ type Options struct {
 	Version string         // psl version, recorded in the log
 
 	// NewClient builds the API client for a model. Defaults to llm.New.
-	NewClient func(*pslrc.Model) (llm.Client, error)
+	NewClient func(*pslrc.Model) llm.Client
 }
 
 // Result describes the slot that was resolved.
@@ -75,10 +73,7 @@ func Compile(ctx context.Context, opts Options) (*Result, error) {
 	if newClient == nil {
 		newClient = llm.New
 	}
-	client, err := newClient(model)
-	if err != nil {
-		return nil, err
-	}
+	client := newClient(model)
 
 	req := llm.Request{
 		Model:     model.ID(),
@@ -127,6 +122,10 @@ func (o Options) record(src string, s slot.Slot, model *pslrc.Model, req llm.Req
 	if abs, err := filepath.Abs(file); err == nil {
 		file = abs
 	}
+	body, err := llm.Body(req)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "psl: warning: %v\n", err)
+	}
 	entry := psllog.Entry{
 		PSLVersion: o.Version,
 		File:       file,
@@ -139,22 +138,11 @@ func (o Options) record(src string, s slot.Slot, model *pslrc.Model, req llm.Req
 			Name:      model.Name,
 			ID:        model.ID(),
 			BaseURL:   model.BaseURL,
-			API:       string(model.Protocol()),
 			Endpoint:  llm.Endpoint(model),
 			MaxTokens: model.MaxTokens,
 		},
-		Request: psllog.Request{
-			System: req.System,
-			Prompt: req.Prompt,
-		},
+		Request:    body,
 		DurationMS: took.Milliseconds(),
-	}
-	if req.Image != nil {
-		// The base64 payload is deliberately left out; only its shape is useful.
-		entry.Request.Image = &psllog.Image{
-			MediaType: req.Image.MediaType,
-			Bytes:     base64Size(req.Image.Base64),
-		}
 	}
 	if callErr != nil {
 		entry.Error = callErr.Error()
@@ -197,12 +185,6 @@ func writeFile(path, content string, perm os.FileMode) error {
 		return fmt.Errorf("replace %s: %w", path, err)
 	}
 	return nil
-}
-
-// base64Size is the number of bytes a base64 payload decodes to. DecodedLen
-// alone only bounds it, since it cannot see the padding.
-func base64Size(payload string) int {
-	return base64.StdEncoding.DecodedLen(len(payload)) - strings.Count(payload, "=")
 }
 
 // lineColumn resolves a byte offset to a 1-based line and column.

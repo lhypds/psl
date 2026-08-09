@@ -10,7 +10,7 @@ make uninstall  # ./uninstall.sh
 make release    # ./release.sh
 ```
 
-The compiler is a thin pipeline: [internal/slot](../internal/slot) finds and rewrites slots, [internal/pslrc](../internal/pslrc) reads the configuration, [internal/llm](../internal/llm) speaks the Anthropic and OpenAI chat APIs, [internal/psllog](../internal/psllog) records each request, [internal/updater](../internal/updater) handles `psl update`, and [internal/compiler](../internal/compiler) ties them together and writes the file back atomically.
+The compiler is a thin pipeline: [internal/slot](../internal/slot) finds and rewrites slots, [internal/pslrc](../internal/pslrc) reads the configuration, [internal/llm](../internal/llm) speaks the OpenAI chat completions protocol, which is the only one, [internal/psllog](../internal/psllog) records each request, [internal/updater](../internal/updater) handles `psl update`, and [internal/compiler](../internal/compiler) ties them together and writes the file back atomically.
 
 
 Releasing

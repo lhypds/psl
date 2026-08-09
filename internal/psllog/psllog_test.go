@@ -122,7 +122,7 @@ func TestEntryOmitsEmptyOptionalFields(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, absent := range []string{"response", "usage", "error", "image", "psl_version"} {
+	for _, absent := range []string{"response", "usage", "error", "psl_version"} {
 		if strings.Contains(string(line), `"`+absent+`"`) {
 			t.Errorf("entry = %s, want %q omitted when unset", line, absent)
 		}

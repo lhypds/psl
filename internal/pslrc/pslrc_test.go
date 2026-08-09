@@ -39,14 +39,8 @@ func TestParse(t *testing.T) {
 	if claude.MaxTokens != 1024 {
 		t.Errorf("MaxTokens = %d, want 1024", claude.MaxTokens)
 	}
-	if claude.Protocol() != APIAnthropic {
-		t.Errorf("Protocol() = %q, want %q", claude.Protocol(), APIAnthropic)
-	}
 	if claude.ID() != "claude-opus-5" {
 		t.Errorf("ID() = %q, want the section name", claude.ID())
-	}
-	if got := cfg.Models["gpt-5.6"].Protocol(); got != APIOpenAI {
-		t.Errorf("Protocol() = %q, want %q", got, APIOpenAI)
 	}
 }
 
@@ -75,8 +69,19 @@ api = openai
 	if m.ID() != "qwen3:8b" {
 		t.Errorf("ID() = %q, want the model= override", m.ID())
 	}
-	if m.Protocol() != APIOpenAI {
-		t.Errorf("Protocol() = %q, want the api= override", m.Protocol())
+}
+
+// api= selected a wire protocol before there was only one. A .pslrc written
+// then still has to parse, so the key is accepted and does nothing.
+func TestParseIgnoresTheApiKey(t *testing.T) {
+	for _, value := range []string{"anthropic", "openai", "grpc"} {
+		cfg, err := Parse("[m]\nbase_url=https://x\napi_key=k\napi="+value, ".pslrc")
+		if err != nil {
+			t.Fatalf("Parse() with api=%s: %v", value, err)
+		}
+		if _, ok := cfg.Models["m"]; !ok {
+			t.Errorf("api=%s dropped the section", value)
+		}
 	}
 }
 
@@ -90,7 +95,6 @@ func TestParseErrors(t *testing.T) {
 		{"missing equals", "[m]\nbase_url", "expected key=value"},
 		{"unknown key", "[m]\nnope=1", `unknown key "nope"`},
 		{"bad max_tokens", "[m]\nmax_tokens=zero", "max_tokens must be"},
-		{"bad api", "[m]\napi=grpc", "api must be"},
 		{"unterminated section", "[m\n", "unterminated section"},
 		{"duplicate section", "[m]\n[m]\n", "duplicate section"},
 	}
@@ -218,21 +222,20 @@ func TestLoadFromEnvironment(t *testing.T) {
 		openai    string
 		anthropic string
 		wantModel string
-		wantAPI   API
 		wantURL   string
 		wantKey   string
 	}{
 		{
 			name: "openai key wins", openai: "sk-o", anthropic: "sk-a",
-			wantModel: "gpt-5.6", wantAPI: APIOpenAI, wantURL: "https://api.openai.com", wantKey: "sk-o",
+			wantModel: "gpt-5.6", wantURL: "https://api.openai.com", wantKey: "sk-o",
 		},
 		{
 			name: "openai key alone", openai: "sk-o",
-			wantModel: "gpt-5.6", wantAPI: APIOpenAI, wantURL: "https://api.openai.com", wantKey: "sk-o",
+			wantModel: "gpt-5.6", wantURL: "https://api.openai.com", wantKey: "sk-o",
 		},
 		{
 			name: "anthropic key alone", anthropic: "sk-a",
-			wantModel: "claude-opus-5", wantAPI: APIAnthropic, wantURL: "https://api.anthropic.com", wantKey: "sk-a",
+			wantModel: "claude-opus-5", wantURL: "https://api.anthropic.com", wantKey: "sk-a",
 		},
 	}
 
@@ -255,9 +258,6 @@ func TestLoadFromEnvironment(t *testing.T) {
 			}
 			if m.Name != tc.wantModel || m.ID() != tc.wantModel {
 				t.Errorf("resolved %q, want %q", m.Name, tc.wantModel)
-			}
-			if m.Protocol() != tc.wantAPI {
-				t.Errorf("Protocol() = %q, want %q", m.Protocol(), tc.wantAPI)
 			}
 			if m.BaseURL != tc.wantURL {
 				t.Errorf("BaseURL = %q, want %q", m.BaseURL, tc.wantURL)

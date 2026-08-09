@@ -38,11 +38,15 @@ type Entry struct {
 	File       string    `json:"file"`
 	Slot       Slot      `json:"slot"`
 	Model      Model     `json:"model"`
-	Request    Request   `json:"request"`
-	Response   *Response `json:"response,omitempty"`
-	Usage      *Usage    `json:"usage,omitempty"`
-	DurationMS int64     `json:"duration_ms"`
-	Error      string    `json:"error,omitempty"`
+	// Request is the JSON body the endpoint received, kept raw so each API
+	// keeps its own shape: what psl composed is only worth recording as the
+	// thing that was actually sent. Its "messages" hold the prompt, and — for
+	// APIs that carry it there — the system prompt too.
+	Request    json.RawMessage `json:"request"`
+	Response   *Response       `json:"response,omitempty"`
+	Usage      *Usage          `json:"usage,omitempty"`
+	DurationMS int64           `json:"duration_ms"`
+	Error      string          `json:"error,omitempty"`
 }
 
 // Slot locates the instruction that was resolved.
@@ -57,22 +61,8 @@ type Model struct {
 	Name      string `json:"name"`     // section name in .pslrc
 	ID        string `json:"id"`       // model id sent to the API
 	BaseURL   string `json:"base_url"` // never includes credentials
-	API       string `json:"api"`      // wire protocol
 	Endpoint  string `json:"endpoint"`
 	MaxTokens int    `json:"max_tokens,omitempty"`
-}
-
-// Request is what psl sent, minus any credentials.
-type Request struct {
-	System string `json:"system"`
-	Prompt string `json:"prompt"`
-	Image  *Image `json:"image,omitempty"`
-}
-
-// Image records that visual context was attached, without its bytes.
-type Image struct {
-	MediaType string `json:"media_type"`
-	Bytes     int    `json:"bytes"`
 }
 
 // Response is what the model returned.

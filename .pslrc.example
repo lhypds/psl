@@ -16,9 +16,10 @@ api_key=${ANTHROPIC_API_KEY}
 base_url=https://api.openai.com
 api_key=${OPENAI_API_KEY}
 
-# Any OpenAI-compatible endpoint works, including a local one.
+# Every endpoint is spoken to the same way — OpenAI chat completions, which
+# Anthropic serves too — so a section is just a base URL, a key, and a model id.
+# Anything that speaks it works, including a local one.
 # [local]
 # base_url=http://127.0.0.1:11434
 # api_key=unused
 # model=qwen3:8b
-# api=openai
