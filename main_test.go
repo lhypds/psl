@@ -45,6 +45,34 @@ func TestParseArgs(t *testing.T) {
 	}
 }
 
+func TestVersionString(t *testing.T) {
+	released := strings.TrimSpace(versionFile)
+	if released == "" {
+		t.Fatal("the VERSION file is empty; it should hold the released version")
+	}
+
+	tests := []struct {
+		name  string
+		build string
+		want  string
+	}{
+		{"no build stamp", "", "psl " + released},
+		{"build stamp matches the release", "v" + released, "psl " + released},
+		{"development build", "abc1234-dirty", "psl " + released + " (abc1234-dirty)"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			original := version
+			version = tc.build
+			defer func() { version = original }()
+
+			if got := versionString(); got != tc.want {
+				t.Errorf("versionString() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestSummarize(t *testing.T) {
 	long := "write a function that does something very specific — 変換 — and quite long indeed, well past the limit"
 	got := summarize(long)

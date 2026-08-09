@@ -5,6 +5,7 @@ package main
 
 import (
 	"context"
+	_ "embed"
 	"errors"
 	"fmt"
 	"os"
@@ -18,7 +19,15 @@ import (
 	"psl/internal/pslrc"
 )
 
-// version is overridden at build time with -ldflags "-X main.version=...".
+// versionFile is the released version, carried in the binary so that psl
+// reports it however it was built. release.sh tags "v" + this.
+//
+//go:embed VERSION
+var versionFile string
+
+// version is the exact build, stamped in by build.sh with
+// -ldflags "-X main.version=...". It is shown alongside the released version
+// when the two differ, which is what identifies a development build.
 var version = ""
 
 const usage = `psl — Prompt Script Language compiler
@@ -158,11 +167,18 @@ func summarize(instruction string) string {
 }
 
 func versionString() string {
-	if version != "" {
-		return "psl " + version
+	released := strings.TrimSpace(versionFile)
+	if released == "" {
+		released = "unknown"
 	}
-	if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
-		return "psl " + info.Main.Version
+	build := strings.TrimSpace(version)
+	if build == "" {
+		if info, ok := debug.ReadBuildInfo(); ok && info.Main.Version != "" && info.Main.Version != "(devel)" {
+			build = info.Main.Version
+		}
 	}
-	return "psl (devel)"
+	if build == "" || build == released || build == "v"+released {
+		return "psl " + released
+	}
+	return fmt.Sprintf("psl %s (%s)", released, build)
 }

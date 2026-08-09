@@ -15,7 +15,9 @@ Options:
   -o, --output <path>   where to write the executable (default: ./psl)
   -h, --help            show this help
 
-The version reported by `psl --version` is stamped in from `git describe`.
+The version reported by `psl --version` is stamped in from `git describe`, or
+from $VERSION when that is set (release.sh uses it).
+
 GOOS and GOARCH are honoured, so cross-compiling is just:
 
   GOOS=linux GOARCH=amd64 ./build.sh -o dist/psl-linux-amd64
@@ -56,7 +58,7 @@ if ! command -v go >/dev/null 2>&1; then
 	exit 1
 fi
 
-version=$(git describe --tags --always --dirty 2>/dev/null || echo devel)
+version=${VERSION:-$(git describe --tags --always --dirty 2>/dev/null || echo devel)}
 
 mkdir -p "$(dirname "$output")"
 go build -trimpath -ldflags "-s -w -X main.version=$version" -o "$output" .

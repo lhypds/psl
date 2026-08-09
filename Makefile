@@ -1,4 +1,4 @@
-.PHONY: build test vet install uninstall clean
+.PHONY: build test vet install uninstall release clean
 
 # The scripts own the build and install logic; the Makefile just calls them.
 build:
@@ -16,6 +16,9 @@ install:
 
 uninstall:
 	./uninstall.sh
+
+release:
+	./release.sh
 
 clean:
 	rm -rf psl dist
