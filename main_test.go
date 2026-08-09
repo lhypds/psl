@@ -20,8 +20,14 @@ func TestParseArgs(t *testing.T) {
 		{name: "help", args: []string{"--help"}, want: options{help: true}},
 		{name: "help wins over a file", args: []string{"a.psl", "-h"}, want: options{path: "a.psl", help: true}},
 		{name: "version", args: []string{"-v"}, want: options{version: true}},
+		{name: "update command", args: []string{"update"}, want: options{update: true}},
 		{name: "no file", args: nil, isErr: true},
 		{name: "two files", args: []string{"a.psl", "b.psl"}, isErr: true},
+		{name: "update takes no arguments", args: []string{"update", "a.psl"}, isErr: true},
+		// "update" is a command only in first position, so a file of that name
+		// stays compilable as ./update.
+		{name: "update after a file is a second file", args: []string{"a.psl", "update"}, isErr: true},
+		{name: "path named update", args: []string{"./update"}, want: options{path: "./update"}},
 		{name: "unknown flag", args: []string{"a.psl", "--loud"}, isErr: true},
 		{name: "image without a value", args: []string{"a.psl", "--image"}, isErr: true},
 	}

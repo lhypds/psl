@@ -17,6 +17,7 @@ import (
 	"psl/internal/compiler"
 	"psl/internal/imageref"
 	"psl/internal/pslrc"
+	"psl/internal/updater"
 )
 
 // versionFile is the released version, carried in the binary so that psl
@@ -34,10 +35,14 @@ const usage = `psl — Prompt Script Language compiler
 
 Usage:
   psl <file.psl> [--image <base64_image>]
+  psl update
 
 Each run resolves exactly one AI slot: psl finds the first remaining
 :: instruction :: in the file, generates its output, and writes the result
 back over the slot. Run psl again for the next slot.
+
+Commands:
+  update               replace this executable with the latest GitHub release
 
 Options:
   -i, --image <data>   image given to the slot resolved on this run;
@@ -69,6 +74,13 @@ func run(args []string) int {
 		return 0
 	}
 
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	if opts.update {
+		return runUpdate(ctx)
+	}
+
 	image, err := imageref.Load(opts.image)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "psl: %v\n", err)
@@ -85,9 +97,6 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "psl: %v\n", err)
 		return 1
 	}
-
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
 
 	result, err := compiler.Compile(ctx, compiler.Options{
 		Path:   opts.path,
@@ -113,9 +122,31 @@ func run(args []string) int {
 	return 0
 }
 
+// runUpdate replaces this executable with the newest published release.
+func runUpdate(ctx context.Context) int {
+	result, err := updater.Update(ctx, updater.Options{
+		Current: strings.TrimSpace(versionFile),
+		Log:     os.Stderr,
+	})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "psl: %v\n", err)
+		return 1
+	}
+	if !result.Updated {
+		fmt.Fprintf(os.Stderr, "psl: already on the latest release (%s)\n", result.Latest)
+		return 0
+	}
+	fmt.Fprintf(os.Stderr, "psl: updated %s from %s to %s\n", result.Path, result.Previous, result.Latest)
+	if result.URL != "" {
+		fmt.Fprintf(os.Stderr, "psl: %s\n", result.URL)
+	}
+	return 0
+}
+
 type options struct {
 	path    string
 	image   string
+	update  bool
 	help    bool
 	version bool
 }
@@ -143,14 +174,21 @@ func parseArgs(args []string) (options, error) {
 			opts.image = strings.TrimPrefix(arg, "--image=")
 		case strings.HasPrefix(arg, "-") && arg != "-":
 			return opts, fmt.Errorf("unknown option %q", arg)
+		// "update" is a command only as the first argument, so a file really
+		// named update is still compilable as ./update.
+		case arg == "update" && i == 0:
+			opts.update = true
 		default:
+			if opts.update {
+				return opts, fmt.Errorf("update takes no arguments, got %q", arg)
+			}
 			if opts.path != "" {
 				return opts, fmt.Errorf("psl compiles one file per run, got %q and %q", opts.path, arg)
 			}
 			opts.path = arg
 		}
 	}
-	if opts.path == "" {
+	if opts.path == "" && !opts.update {
 		return opts, errors.New("no input file")
 	}
 	return opts, nil

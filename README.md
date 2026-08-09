@@ -24,6 +24,14 @@ Install somewhere you own, and no root is involved:
 ./uninstall.sh --prefix "$HOME/.local"
 ```
 
+Once installed, psl updates itself from the GitHub releases:
+
+```shell
+psl update
+```
+
+It downloads the release built for your platform, checks it against the release's `SHA256SUMS` — a release it cannot verify is never installed — and swaps it in for the running executable. The old binary is only replaced once the new one is on disk and verified, so a failed update leaves the working psl in place. If psl lives somewhere that needs root, run `sudo psl update`.
+
 `build.sh` stamps the version from `git describe` and honours `GOOS`/`GOARCH`:
 
 ```shell
@@ -127,6 +135,8 @@ psl: no slots remaining
 ```
 
 Progress goes to stderr, so stdout stays clean. The compiler exits `0` on success and when no slots remain, `1` on a compilation or configuration error, and `2` on a usage error.
+
+`psl update` is the one argument that is not a file name — it upgrades psl itself, see Install. A file genuinely called `update` still compiles as `psl ./update`.
 
 
 .pslrc
