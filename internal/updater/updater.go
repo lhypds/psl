@@ -93,6 +93,13 @@ func Update(ctx context.Context, opts Options) (*Result, error) {
 		return nil, fmt.Errorf("%w; psl will not install a release it cannot verify", err)
 	}
 
+	// Fail before downloading anything: an executable installed system-wide
+	// cannot be replaced by an ordinary user, and finding that out after
+	// fetching several megabytes helps nobody.
+	if err := checkWritable(opts.ExePath); err != nil {
+		return nil, err
+	}
+
 	opts.logf("downloading %s…", ChecksumsAsset)
 	sumsText, err := opts.get(ctx, sums.URL)
 	if err != nil {
@@ -147,6 +154,23 @@ func (o *Options) setDefaults() error {
 		o.ExePath = resolved
 	}
 	return nil
+}
+
+// checkWritable reports whether this process could replace exe, by trying the
+// same thing the install step will: creating a file in its directory.
+func checkWritable(exe string) error {
+	dir := filepath.Dir(exe)
+	probe, err := os.CreateTemp(dir, ".psl-writable-*")
+	if err == nil {
+		name := probe.Name()
+		probe.Close()
+		os.Remove(name)
+		return nil
+	}
+	if os.IsPermission(err) {
+		return fmt.Errorf("%s cannot be replaced by this user; re-run: sudo psl update", exe)
+	}
+	return fmt.Errorf("%s cannot be replaced: %w", exe, err)
 }
 
 func (o *Options) logf(format string, args ...any) {

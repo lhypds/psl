@@ -25,7 +25,9 @@ func install(archive, assetName, binary, target string) error {
 	dir := filepath.Dir(target)
 	staged, err := os.CreateTemp(dir, ".psl-update-*")
 	if err != nil {
-		return fmt.Errorf("cannot write to %s: %w (re-run with sudo if psl is installed system-wide)", dir, err)
+		// Update checks this up front; reaching here means the permissions
+		// changed underneath us.
+		return fmt.Errorf("cannot write to %s: %w", dir, err)
 	}
 	stagedName := staged.Name()
 	defer os.Remove(stagedName)
@@ -50,7 +52,7 @@ func swap(staged, target string) error {
 	_ = os.Remove(backup)
 
 	if err := os.Rename(target, backup); err != nil {
-		return fmt.Errorf("cannot replace %s: %w (re-run with sudo if psl is installed system-wide)", target, err)
+		return fmt.Errorf("cannot replace %s: %w (re-run: sudo psl update)", target, err)
 	}
 	if err := os.Rename(staged, target); err != nil {
 		// Put the old executable back rather than leaving nothing behind.

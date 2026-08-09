@@ -291,6 +291,48 @@ func TestUpdateLeavesExecutableOnFailure(t *testing.T) {
 	}
 }
 
+func TestUpdateRefusesBeforeDownloadingWhenItCannotWrite(t *testing.T) {
+	if os.Geteuid() == 0 {
+		t.Skip("root can write anywhere")
+	}
+	f := newFakeRelease(t, "v0.2.0")
+	asset := "psl-0.2.0-linux-amd64.tar.gz"
+	f.publish(asset, tarGz(t, map[string]string{"psl-0.2.0-linux-amd64/psl": "NEW BINARY"}))
+
+	// An executable in a directory this user cannot write, as /usr/local/bin is.
+	dir := filepath.Join(t.TempDir(), "bin")
+	if err := os.Mkdir(dir, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	exe := filepath.Join(dir, "psl")
+	if err := os.WriteFile(exe, []byte("OLD BINARY"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chmod(dir, 0o555); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { os.Chmod(dir, 0o755) })
+
+	_, err := Update(context.Background(), f.options(t, "0.1.0", exe))
+	if err == nil {
+		t.Fatal("Update() succeeded, want a permission error")
+	}
+	if !strings.Contains(err.Error(), "sudo psl update") {
+		t.Errorf("Update() error = %v, want it to name the command to re-run", err)
+	}
+	if !strings.Contains(err.Error(), exe) {
+		t.Errorf("Update() error = %v, want it to name the executable", err)
+	}
+	// The point of checking early: nothing is fetched that cannot be installed.
+	if f.hits[asset] != 0 || f.hits[ChecksumsAsset] != 0 {
+		t.Errorf("downloaded %d archives and %d checksum files, want none",
+			f.hits[asset], f.hits[ChecksumsAsset])
+	}
+	if got := readFile(t, exe); got != "OLD BINARY" {
+		t.Errorf("executable = %q, want it untouched", got)
+	}
+}
+
 func TestUpdateReportsMissingRelease(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
