@@ -149,6 +149,6 @@ Progress goes to stderr, so stdout stays clean. The compiler exits `0` on succes
 Documentation
 -------------
 
-- [Logging](docs/01_Logging.md) — every AI request recorded in `.psl/psl.log`
+- [Logging](docs/01_Logging.md) — every AI request recorded in `~/.psl/psl.log`
 - [.pslrc](docs/02_pslrc.md) — API keys and models, and what psl does without a `.pslrc`
 - [Development](docs/03_Development.md) — building, testing and releasing psl

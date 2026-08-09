@@ -1,9 +1,9 @@
-// Package psllog records every AI request psl makes to .psl/psl.log.
+// Package psllog records every AI request psl makes to ~/.psl/psl.log.
 //
 // Each request is one JSON object on its own line, so the file stays appendable
 // and greppable while holding prompts and responses that span many lines:
 //
-//	jq 'select(.error) | {time, model: .model.name, error}' .psl/psl.log
+//	jq 'select(.error) | {time, model: .model.name, error}' ~/.psl/psl.log
 //
 // API keys are never written. An image attached to a slot is recorded by media
 // type and size, not by its bytes.
@@ -89,7 +89,8 @@ type Usage struct {
 }
 
 // Open prepares baseDir/.psl/psl.log for appending, creating the directory if
-// it is not there yet.
+// it is not there yet. psl passes the user's home directory; tests pass their
+// own.
 func Open(baseDir string) (*Logger, error) {
 	dir := filepath.Join(baseDir, Dir)
 	if err := os.MkdirAll(dir, 0o755); err != nil {

@@ -100,9 +100,13 @@ func run(args []string) int {
 		return 1
 	}
 
-	// A log that cannot be opened is worth a warning, not a failed compile.
-	logger, err := psllog.Open(dir)
-	if err != nil {
+	// The log is one history per user, so it lives in the home directory rather
+	// than wherever psl happened to be run. A log that cannot be opened is
+	// worth a warning, not a failed compile.
+	var logger *psllog.Logger
+	if home, err := os.UserHomeDir(); err != nil {
+		fmt.Fprintf(os.Stderr, "psl: warning: %v\n", err)
+	} else if logger, err = psllog.Open(home); err != nil {
 		fmt.Fprintf(os.Stderr, "psl: warning: %v\n", err)
 	}
 

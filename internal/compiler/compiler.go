@@ -121,9 +121,15 @@ func (o Options) record(src string, s slot.Slot, model *pslrc.Model, req llm.Req
 		return
 	}
 	line, column := lineColumn(src, s.Start)
+	// One log holds every project's requests, so record where the file is, not
+	// just what it was called on the command line.
+	file := o.Path
+	if abs, err := filepath.Abs(file); err == nil {
+		file = abs
+	}
 	entry := psllog.Entry{
 		PSLVersion: o.Version,
-		File:       o.Path,
+		File:       file,
 		Slot: psllog.Slot{
 			Line:        line,
 			Column:      column,
