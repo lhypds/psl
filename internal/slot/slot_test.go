@@ -58,8 +58,35 @@ func TestFind(t *testing.T) {
 			span:        ":: return 42 ::",
 		},
 		{
+			name:        "no whitespace inside the delimiters",
+			src:         "if (::zed is running::) {\n    click(40, 40)\n}\n",
+			found:       true,
+			instruction: "zed is running",
+			span:        "::zed is running::",
+		},
+		{
+			name:        "no whitespace on one side only",
+			src:         "if (::zed is running ::) {\n}\n",
+			found:       true,
+			instruction: "zed is running",
+			span:        "::zed is running ::",
+		},
+		{
+			name:        "model prefix without whitespace after the delimiter",
+			src:         "::gpt-5.6> zed is running::",
+			found:       true,
+			model:       "gpt-5.6",
+			instruction: "zed is running",
+			span:        "::gpt-5.6> zed is running::",
+		},
+		{
 			name:  "cpp scope resolution is not a slot",
 			src:   "std::cout << x;\nstd::vector<int> v;\n",
+			found: false,
+		},
+		{
+			name:  "rust and php scope resolution are not slots",
+			src:   "let v = Foo::Bar::new();\nself::method();\n",
 			found: false,
 		},
 		{
@@ -73,6 +100,16 @@ func TestFind(t *testing.T) {
 			name:  "identifier glued to the left is not a slot",
 			src:   "foo:: bar ::",
 			found: false,
+		},
+		{
+			// The price of optional whitespace: `std::` followed by a space is
+			// indistinguishable from a closing delimiter. Written the normal
+			// way, `std::cout`, it stays inside the instruction.
+			name:        "scope resolution followed by a space closes the slot early",
+			src:         ":: fix the std:: usage ::",
+			found:       true,
+			instruction: "fix the std",
+			span:        ":: fix the std::",
 		},
 		{
 			name:        "punctuation on the left still opens a slot",

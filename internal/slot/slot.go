@@ -6,12 +6,15 @@
 //	:: gpt-5.6> write a fibonacci function ::
 //
 // Because PSL files are written in other languages, the delimiters are only
-// recognised when they cannot be part of that language's own syntax:
+// recognised when they cannot be part of that language's own syntax. Scope
+// resolution — C++'s std::cout, Rust's Foo::Bar, PHP's self::method — always
+// glues `::` to an identifier, so:
 //
-//   - the opening `::` must be followed by whitespace and must not be glued to
-//     an identifier on its left, so C++'s `std::cout` is never a slot;
-//   - the closing `::` must be preceded by whitespace and must not be glued to
-//     an identifier on its right, so `std::cout` inside an instruction is safe.
+//   - the opening `::` must not be glued to an identifier on its left;
+//   - the closing `::` must not be glued to an identifier on its right.
+//
+// Whitespace inside the delimiters is optional: `::do it::` and `:: do it ::`
+// are the same slot.
 package slot
 
 import (
@@ -86,12 +89,10 @@ func Mask(src string, s Slot) string {
 	return src[:s.Start] + Marker + src[s.End:]
 }
 
-// opensSlot reports whether the "::" at i can start a slot.
+// opensSlot reports whether the "::" at i can start a slot. It cannot when an
+// identifier runs into it from the left, which is what keeps the `::` of
+// std::cout out of the way.
 func opensSlot(src string, i int) bool {
-	next, size := utf8.DecodeRuneInString(src[i+2:])
-	if size == 0 || !unicode.IsSpace(next) {
-		return false
-	}
 	prev, size := utf8.DecodeLastRuneInString(src[:i])
 	if size == 0 {
 		return true
@@ -100,13 +101,11 @@ func opensSlot(src string, i int) bool {
 }
 
 // findClose returns the offset of the "::" that closes a slot opened at from.
+// A "::" that runs straight into an identifier is scope resolution written
+// inside the instruction, not the end of it.
 func findClose(src string, from int) (int, bool) {
 	for i := from; i+1 < len(src); i++ {
 		if src[i] != ':' || src[i+1] != ':' {
-			continue
-		}
-		prev, size := utf8.DecodeLastRuneInString(src[:i])
-		if size == 0 || !unicode.IsSpace(prev) {
 			continue
 		}
 		next, size := utf8.DecodeRuneInString(src[i+2:])
