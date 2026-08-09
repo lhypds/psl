@@ -36,12 +36,17 @@ type openAIResponse struct {
 			Content string `json:"content"`
 		} `json:"message"`
 	} `json:"choices"`
+	Usage struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage"`
 	Error *struct {
 		Message string `json:"message"`
 	} `json:"error"`
 }
 
-func (c *openAIClient) Complete(ctx context.Context, req Request) (string, error) {
+func (c *openAIClient) Complete(ctx context.Context, req Request) (*Response, error) {
 	messages := make([]openAIMessage, 0, 2)
 	if req.System != "" {
 		messages = append(messages, openAIMessage{Role: "system", Content: req.System})
@@ -67,22 +72,30 @@ func (c *openAIClient) Complete(ctx context.Context, req Request) (string, error
 	header.Set("Authorization", "Bearer "+c.apiKey)
 
 	var resp openAIResponse
-	if err := c.post(ctx, "/v1/chat/completions", header, body, &resp); err != nil {
-		return "", err
+	if err := c.post(ctx, openAIPath, header, body, &resp); err != nil {
+		return nil, err
 	}
 	if resp.Error != nil {
-		return "", fmt.Errorf("model %s: %s", req.Model, resp.Error.Message)
+		return nil, fmt.Errorf("model %s: %s", req.Model, resp.Error.Message)
 	}
 	if len(resp.Choices) == 0 {
-		return "", fmt.Errorf("model %s returned no choices", req.Model)
+		return nil, fmt.Errorf("model %s returned no choices", req.Model)
 	}
 	choice := resp.Choices[0]
 	if choice.Message.Content == "" {
-		return "", fmt.Errorf("model %s returned empty content (finish_reason %q)", req.Model, choice.FinishReason)
+		return nil, fmt.Errorf("model %s returned empty content (finish_reason %q)", req.Model, choice.FinishReason)
 	}
 	if choice.FinishReason == "length" {
-		return "", fmt.Errorf("model %s hit the token limit (%d) before finishing; raise max_tokens in .pslrc",
+		return nil, fmt.Errorf("model %s hit the token limit (%d) before finishing; raise max_tokens in .pslrc",
 			req.Model, maxTokens(req))
 	}
-	return choice.Message.Content, nil
+	return &Response{
+		Text:       choice.Message.Content,
+		StopReason: choice.FinishReason,
+		Usage: Usage{
+			InputTokens:  resp.Usage.PromptTokens,
+			OutputTokens: resp.Usage.CompletionTokens,
+			TotalTokens:  resp.Usage.TotalTokens,
+		},
+	}, nil
 }

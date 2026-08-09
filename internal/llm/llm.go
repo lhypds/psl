@@ -35,9 +35,39 @@ type Request struct {
 	MaxTokens int
 }
 
+// Usage is what the model reported spending on a request.
+type Usage struct {
+	InputTokens  int
+	OutputTokens int
+	TotalTokens  int
+}
+
+// Response is a completed request.
+type Response struct {
+	Text       string
+	StopReason string
+	Usage      Usage
+}
+
 // Client is a chat endpoint.
 type Client interface {
-	Complete(ctx context.Context, req Request) (string, error)
+	Complete(ctx context.Context, req Request) (*Response, error)
+}
+
+// Endpoint paths, per protocol.
+const (
+	anthropicPath = "/v1/messages"
+	openAIPath    = "/v1/chat/completions"
+)
+
+// Endpoint reports the URL a model's requests are sent to.
+func Endpoint(m *pslrc.Model) string {
+	switch m.Protocol() {
+	case pslrc.APIAnthropic:
+		return m.BaseURL + anthropicPath
+	default:
+		return m.BaseURL + openAIPath
+	}
 }
 
 // New builds the client for a configured model.

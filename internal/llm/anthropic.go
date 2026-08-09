@@ -42,9 +42,13 @@ type anthropicResponse struct {
 		Text string `json:"text"`
 	} `json:"content"`
 	StopReason string `json:"stop_reason"`
+	Usage      struct {
+		InputTokens  int `json:"input_tokens"`
+		OutputTokens int `json:"output_tokens"`
+	} `json:"usage"`
 }
 
-func (c *anthropicClient) Complete(ctx context.Context, req Request) (string, error) {
+func (c *anthropicClient) Complete(ctx context.Context, req Request) (*Response, error) {
 	content := make([]anthropicContent, 0, 2)
 	if req.Image != nil {
 		content = append(content, anthropicContent{
@@ -70,8 +74,8 @@ func (c *anthropicClient) Complete(ctx context.Context, req Request) (string, er
 	header.Set("anthropic-version", anthropicVersion)
 
 	var resp anthropicResponse
-	if err := c.post(ctx, "/v1/messages", header, body, &resp); err != nil {
-		return "", err
+	if err := c.post(ctx, anthropicPath, header, body, &resp); err != nil {
+		return nil, err
 	}
 
 	var text strings.Builder
@@ -81,11 +85,19 @@ func (c *anthropicClient) Complete(ctx context.Context, req Request) (string, er
 		}
 	}
 	if text.Len() == 0 {
-		return "", fmt.Errorf("model %s returned no text (stop_reason %q)", req.Model, resp.StopReason)
+		return nil, fmt.Errorf("model %s returned no text (stop_reason %q)", req.Model, resp.StopReason)
 	}
 	if resp.StopReason == "max_tokens" {
-		return "", fmt.Errorf("model %s hit max_tokens (%d) before finishing; raise max_tokens in .pslrc",
+		return nil, fmt.Errorf("model %s hit max_tokens (%d) before finishing; raise max_tokens in .pslrc",
 			req.Model, maxTokens(req))
 	}
-	return text.String(), nil
+	return &Response{
+		Text:       text.String(),
+		StopReason: resp.StopReason,
+		Usage: Usage{
+			InputTokens:  resp.Usage.InputTokens,
+			OutputTokens: resp.Usage.OutputTokens,
+			TotalTokens:  resp.Usage.InputTokens + resp.Usage.OutputTokens,
+		},
+	}, nil
 }

@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -9,19 +10,24 @@ import (
 	"testing"
 
 	"psl/internal/llm"
+	"psl/internal/psllog"
 	"psl/internal/pslrc"
 	"psl/internal/slot"
 )
 
 type fakeClient struct {
 	reply string
+	usage llm.Usage
 	err   error
 	got   llm.Request
 }
 
-func (f *fakeClient) Complete(_ context.Context, req llm.Request) (string, error) {
+func (f *fakeClient) Complete(_ context.Context, req llm.Request) (*llm.Response, error) {
 	f.got = req
-	return f.reply, f.err
+	if f.err != nil {
+		return nil, f.err
+	}
+	return &llm.Response{Text: f.reply, StopReason: "end_turn", Usage: f.usage}, nil
 }
 
 func testConfig(t *testing.T) *pslrc.Config {
@@ -229,6 +235,162 @@ func TestCompileMissingFile(t *testing.T) {
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Compile() error = %v, want a not-exist error", err)
 	}
+}
+
+// readLog returns the entries written to a logger's file.
+func readLog(t *testing.T, logger *psllog.Logger) []psllog.Entry {
+	t.Helper()
+	data, err := os.ReadFile(logger.Path())
+	if err != nil {
+		t.Fatalf("read %s: %v", logger.Path(), err)
+	}
+	var entries []psllog.Entry
+	for _, line := range strings.Split(strings.TrimSpace(string(data)), "\n") {
+		if line == "" {
+			continue
+		}
+		var e psllog.Entry
+		if err := json.Unmarshal([]byte(line), &e); err != nil {
+			t.Fatalf("decode log line %q: %v", line, err)
+		}
+		entries = append(entries, e)
+	}
+	return entries
+}
+
+func compileWithLog(t *testing.T, path string, client llm.Client, image *llm.Image) (*psllog.Logger, error) {
+	t.Helper()
+	logger, err := psllog.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = Compile(context.Background(), Options{
+		Path:      path,
+		Config:    testConfig(t),
+		Image:     image,
+		Log:       logger,
+		Version:   "9.9.9",
+		NewClient: func(*pslrc.Model) (llm.Client, error) { return client, nil },
+	})
+	return logger, err
+}
+
+func TestCompileLogsTheRequest(t *testing.T) {
+	path := writeSource(t, "package main\n\nfunc answer() int {\n\t:: return the answer ::\n}\n")
+	client := &fakeClient{reply: "return 42", usage: llm.Usage{InputTokens: 120, OutputTokens: 34, TotalTokens: 154}}
+
+	logger, err := compileWithLog(t, path, client, &llm.Image{MediaType: "image/png", Base64: "aGVsbG8="})
+	if err != nil {
+		t.Fatalf("Compile() error: %v", err)
+	}
+
+	entries := readLog(t, logger)
+	if len(entries) != 1 {
+		t.Fatalf("got %d log entries, want 1", len(entries))
+	}
+	e := entries[0]
+
+	if e.File != path {
+		t.Errorf("File = %q, want %q", e.File, path)
+	}
+	if e.PSLVersion != "9.9.9" {
+		t.Errorf("PSLVersion = %q, want the version passed in", e.PSLVersion)
+	}
+	if e.Time.IsZero() {
+		t.Error("Time is zero, want the moment of the request")
+	}
+	if e.Slot.Line != 4 || e.Slot.Instruction != "return the answer" {
+		t.Errorf("Slot = %+v, want line 4 and the instruction", e.Slot)
+	}
+	if e.Model.Name != "claude-opus-5" || e.Model.ID != "claude-opus-5" {
+		t.Errorf("Model = %+v, want the resolved model", e.Model)
+	}
+	if e.Model.BaseURL != "https://api.anthropic.com" || e.Model.API != "anthropic" {
+		t.Errorf("Model = %+v, want the base URL and protocol", e.Model)
+	}
+	if e.Model.Endpoint != "https://api.anthropic.com/v1/messages" {
+		t.Errorf("Endpoint = %q, want the URL the request went to", e.Model.Endpoint)
+	}
+	if e.Request.System == "" || !strings.Contains(e.Request.Prompt, "return the answer") {
+		t.Errorf("Request = %+v, want the system prompt and the prompt", e.Request)
+	}
+	if e.Response == nil || e.Response.Text != "return 42" || e.Response.StopReason != "end_turn" {
+		t.Errorf("Response = %+v, want the model's reply", e.Response)
+	}
+	if e.Usage == nil || *e.Usage != (psllog.Usage{InputTokens: 120, OutputTokens: 34, TotalTokens: 154}) {
+		t.Errorf("Usage = %+v, want the reported token counts", e.Usage)
+	}
+	if e.Error != "" {
+		t.Errorf("Error = %q, want empty on success", e.Error)
+	}
+	// The image is recorded by shape only — never its bytes.
+	if e.Request.Image == nil || e.Request.Image.MediaType != "image/png" || e.Request.Image.Bytes != 5 {
+		t.Errorf("Image = %+v, want the media type and decoded size", e.Request.Image)
+	}
+	if strings.Contains(string(mustReadFile(t, logger.Path())), "aGVsbG8=") {
+		t.Error("the log must not contain the image payload")
+	}
+}
+
+func TestCompileLogsFailures(t *testing.T) {
+	path := writeSource(t, ":: hi ::\n")
+	logger, err := compileWithLog(t, path, &fakeClient{err: errors.New("429 rate limited")}, nil)
+	if err == nil {
+		t.Fatal("Compile() succeeded, want the API error")
+	}
+
+	entries := readLog(t, logger)
+	if len(entries) != 1 {
+		t.Fatalf("got %d log entries, want the failed request to be recorded", len(entries))
+	}
+	if !strings.Contains(entries[0].Error, "rate limited") {
+		t.Errorf("Error = %q, want the API error", entries[0].Error)
+	}
+	if entries[0].Response != nil {
+		t.Errorf("Response = %+v, want none when the call failed", entries[0].Response)
+	}
+}
+
+func TestCompileLogsEachRunOnItsOwnLine(t *testing.T) {
+	path := writeSource(t, "// :: greet ::\n// :: farewell ::\n")
+	logger, err := psllog.Open(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, reply := range []string{"hello", "goodbye"} {
+		if _, err := Compile(context.Background(), Options{
+			Path:      path,
+			Config:    testConfig(t),
+			Log:       logger,
+			NewClient: func(*pslrc.Model) (llm.Client, error) { return &fakeClient{reply: reply}, nil },
+		}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	entries := readLog(t, logger)
+	if len(entries) != 2 {
+		t.Fatalf("got %d log entries, want one per run", len(entries))
+	}
+	if entries[0].Slot.Instruction != "greet" || entries[1].Slot.Instruction != "farewell" {
+		t.Errorf("entries = %q, %q; want them appended in order",
+			entries[0].Slot.Instruction, entries[1].Slot.Instruction)
+	}
+}
+
+func TestCompileWithoutALogger(t *testing.T) {
+	path := writeSource(t, ":: hi ::\n")
+	if _, err := compile(t, path, &fakeClient{reply: "hello"}); err != nil {
+		t.Fatalf("Compile() error: %v, want a nil logger to be fine", err)
+	}
+}
+
+func mustReadFile(t *testing.T, path string) []byte {
+	t.Helper()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return data
 }
 
 func TestRunUntilDone(t *testing.T) {

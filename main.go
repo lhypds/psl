@@ -16,6 +16,8 @@ import (
 
 	"psl/internal/compiler"
 	"psl/internal/imageref"
+	"psl/internal/llm"
+	"psl/internal/psllog"
 	"psl/internal/pslrc"
 	"psl/internal/updater"
 )
@@ -98,10 +100,18 @@ func run(args []string) int {
 		return 1
 	}
 
+	// A log that cannot be opened is worth a warning, not a failed compile.
+	logger, err := psllog.Open(dir)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "psl: warning: %v\n", err)
+	}
+
 	result, err := compiler.Compile(ctx, compiler.Options{
-		Path:   opts.path,
-		Config: cfg,
-		Image:  image,
+		Path:    opts.path,
+		Config:  cfg,
+		Image:   image,
+		Log:     logger,
+		Version: strings.TrimSpace(versionFile),
 	})
 	if errors.Is(err, compiler.ErrNoSlots) {
 		fmt.Fprintf(os.Stderr, "psl: %s has no AI slots left\n", opts.path)
@@ -112,8 +122,8 @@ func run(args []string) int {
 		return 1
 	}
 
-	fmt.Fprintf(os.Stderr, "psl: %s resolved with %s — %s\n",
-		opts.path, result.Model, summarize(result.Instruction))
+	fmt.Fprintf(os.Stderr, "psl: %s resolved with %s%s — %s\n",
+		opts.path, result.Model, tokens(result.Usage), summarize(result.Instruction))
 	if result.Remaining > 0 {
 		fmt.Fprintf(os.Stderr, "psl: %d slot(s) remaining, run psl again\n", result.Remaining)
 	} else {
@@ -192,6 +202,14 @@ func parseArgs(args []string) (options, error) {
 		return opts, errors.New("no input file")
 	}
 	return opts, nil
+}
+
+// tokens renders what the request cost, for endpoints that report it.
+func tokens(u llm.Usage) string {
+	if u.TotalTokens == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (%d tokens: %d in, %d out)", u.TotalTokens, u.InputTokens, u.OutputTokens)
 }
 
 func summarize(instruction string) string {

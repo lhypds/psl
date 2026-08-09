@@ -50,7 +50,8 @@ func TestAnthropicComplete(t *testing.T) {
 		}
 		header = r.Header.Clone()
 		got = decodeBody(t, r)
-		io.WriteString(w, `{"content":[{"type":"text","text":"func f() {}"}],"stop_reason":"end_turn"}`)
+		io.WriteString(w, `{"content":[{"type":"text","text":"func f() {}"}],"stop_reason":"end_turn",
+			"usage":{"input_tokens":120,"output_tokens":34}}`)
 	}, pslrc.APIAnthropic)
 	defer done()
 
@@ -63,8 +64,15 @@ func TestAnthropicComplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Complete() error: %v", err)
 	}
-	if out != "func f() {}" {
-		t.Errorf("Complete() = %q, want %q", out, "func f() {}")
+	if out.Text != "func f() {}" {
+		t.Errorf("Complete() = %q, want %q", out.Text, "func f() {}")
+	}
+	if out.StopReason != "end_turn" {
+		t.Errorf("StopReason = %q, want end_turn", out.StopReason)
+	}
+	// Anthropic reports the two counts; the total is psl's own sum.
+	if want := (Usage{InputTokens: 120, OutputTokens: 34, TotalTokens: 154}); out.Usage != want {
+		t.Errorf("Usage = %+v, want %+v", out.Usage, want)
 	}
 	if header.Get("x-api-key") != "sk-test" {
 		t.Errorf("x-api-key = %q, want the configured key", header.Get("x-api-key"))
@@ -134,7 +142,8 @@ func TestOpenAIComplete(t *testing.T) {
 		}
 		header = r.Header.Clone()
 		got = decodeBody(t, r)
-		io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"42"}}]}`)
+		io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"42"}}],
+			"usage":{"prompt_tokens":120,"completion_tokens":34,"total_tokens":154}}`)
 	}, pslrc.APIOpenAI)
 	defer done()
 
@@ -147,8 +156,12 @@ func TestOpenAIComplete(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Complete() error: %v", err)
 	}
-	if out != "42" {
-		t.Errorf("Complete() = %q, want %q", out, "42")
+	if out.Text != "42" {
+		t.Errorf("Complete() = %q, want %q", out.Text, "42")
+	}
+	// OpenAI reports the total itself, so it is taken as given.
+	if want := (Usage{InputTokens: 120, OutputTokens: 34, TotalTokens: 154}); out.Usage != want {
+		t.Errorf("Usage = %+v, want %+v", out.Usage, want)
 	}
 	if header.Get("Authorization") != "Bearer sk-test" {
 		t.Errorf("Authorization = %q, want a bearer token", header.Get("Authorization"))
@@ -220,8 +233,24 @@ func TestRetriesServerErrors(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Complete() error: %v", err)
 	}
-	if out != "ok" || calls != 2 {
-		t.Errorf("Complete() = %q after %d calls, want %q after 2", out, calls, "ok")
+	if out.Text != "ok" || calls != 2 {
+		t.Errorf("Complete() = %q after %d calls, want %q after 2", out.Text, calls, "ok")
+	}
+}
+
+func TestEndpoint(t *testing.T) {
+	tests := []struct {
+		model *pslrc.Model
+		want  string
+	}{
+		{&pslrc.Model{BaseURL: "https://api.anthropic.com", API: pslrc.APIAnthropic}, "https://api.anthropic.com/v1/messages"},
+		{&pslrc.Model{BaseURL: "https://api.openai.com", API: pslrc.APIOpenAI}, "https://api.openai.com/v1/chat/completions"},
+		{&pslrc.Model{BaseURL: "https://api.anthropic.com"}, "https://api.anthropic.com/v1/messages"},
+	}
+	for _, tc := range tests {
+		if got := Endpoint(tc.model); got != tc.want {
+			t.Errorf("Endpoint(%q) = %q, want %q", tc.model.BaseURL, got, tc.want)
+		}
 	}
 }
 
