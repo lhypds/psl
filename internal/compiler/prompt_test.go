@@ -1,6 +1,29 @@
 package compiler
 
-import "testing"
+import (
+	"strings"
+	"testing"
+
+	"psl/internal/slot"
+)
+
+func TestBuildSystem(t *testing.T) {
+	s := slot.Slot{Instruction: "write a fibonacci function"}
+
+	got := buildSystem("fib.go.psl", s, false)
+	for _, want := range []string{"fib.go.psl", "write a fibonacci function", slot.Marker} {
+		if !strings.Contains(got, want) {
+			t.Errorf("system prompt is missing %q:\n%s", want, got)
+		}
+	}
+	if strings.Contains(got, "image is attached") {
+		t.Error("system prompt mentions an image that was not attached")
+	}
+
+	if !strings.Contains(buildSystem("fib.go.psl", s, true), "image is attached") {
+		t.Error("system prompt should say when an image is attached")
+	}
+}
 
 func TestClean(t *testing.T) {
 	tests := []struct {

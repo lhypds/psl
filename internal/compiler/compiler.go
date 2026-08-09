@@ -77,8 +77,8 @@ func Compile(ctx context.Context, opts Options) (*Result, error) {
 
 	req := llm.Request{
 		Model:     model.ID(),
-		System:    systemPrompt,
-		Prompt:    buildPrompt(filepath.Base(opts.Path), slot.Mask(src, s), s, opts.Image != nil),
+		System:    buildSystem(filepath.Base(opts.Path), s, opts.Image != nil),
+		Prompt:    slot.Mask(src, s),
 		Image:     opts.Image,
 		MaxTokens: model.MaxTokens,
 	}

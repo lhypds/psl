@@ -7,9 +7,9 @@ import (
 	"psl/internal/slot"
 )
 
-const systemPrompt = `You are the generator inside the PSL (Prompt Script Language) compiler.
+const rules = `You are the generator inside the PSL (Prompt Script Language) compiler.
 
-A PSL source file is a file written in some other language with AI instructions embedded in it. You are given one such file with a single slot marked ` + slot.Marker + `, plus the instruction written in that slot. Produce the exact text that the compiler will substitute for the marker.
+A PSL source file is a file written in some other language with AI instructions embedded in it. The user message is one such file, with a single slot replaced by ` + slot.Marker + `. Produce the exact text that the compiler will substitute for the marker.
 
 Rules:
 - Output only the replacement text. No explanation, no commentary, no markdown code fences.
@@ -23,26 +23,19 @@ Rules:
 - Write the first line without leading indentation; the compiler indents continuation lines to the marker's column.
 - Never emit the marker itself, and never emit new ':: ... ::' slots.`
 
-// buildPrompt renders the user message for one slot.
-func buildPrompt(fileName, masked string, s slot.Slot, hasImage bool) string {
+// buildSystem renders the system prompt for one slot: the rules, the name of
+// the file being compiled, and the instruction to resolve. Everything psl has
+// to say lives here, so that the user message can be the source alone.
+func buildSystem(fileName string, s slot.Slot, hasImage bool) string {
 	var b strings.Builder
-	fmt.Fprintf(&b, "File: %s\n\n", fileName)
-	b.WriteString("The source below contains one slot marked ")
-	b.WriteString(slot.Marker)
-	b.WriteString(".\n\n----- BEGIN SOURCE -----\n")
-	b.WriteString(masked)
-	if !strings.HasSuffix(masked, "\n") {
-		b.WriteString("\n")
-	}
-	b.WriteString("----- END SOURCE -----\n\n")
+	b.WriteString(rules)
+	fmt.Fprintf(&b, "\n\nFile being compiled: %s\n", fileName)
+	b.WriteString("Its name is what tells you the language to write in; a trailing '.psl' is the compiler's own extension, so the language is whatever the rest of the name says.\n")
 	if hasImage {
-		b.WriteString("An image is attached as additional context for this slot.\n\n")
+		b.WriteString("\nAn image is attached to the user message as additional context for this slot.\n")
 	}
-	b.WriteString("Instruction at ")
-	b.WriteString(slot.Marker)
-	b.WriteString(":\n")
-	b.WriteString(s.Instruction)
-	b.WriteString("\n\nReply with the replacement text only.")
+	fmt.Fprintf(&b, "\nInstruction at %s:\n%s\n", slot.Marker, s.Instruction)
+	b.WriteString("\nThe user message is the file. Reply with the replacement text only.")
 	return b.String()
 }
 

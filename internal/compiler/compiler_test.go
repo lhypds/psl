@@ -99,27 +99,26 @@ func TestCompileResolvesFirstSlot(t *testing.T) {
 	}
 }
 
-func TestCompileSendsMaskedFileAsContext(t *testing.T) {
+// The user message carries the source and nothing else; everything psl says
+// about the job — the file's name, the instruction — is in the system prompt.
+func TestCompileSendsMaskedFileAsThePrompt(t *testing.T) {
 	path := writeSource(t, "package main\n\n:: write main ::\n")
 	client := &fakeClient{reply: "func main() {}"}
 
 	if _, err := compile(t, path, client); err != nil {
 		t.Fatalf("Compile() error: %v", err)
 	}
-	if !strings.Contains(client.got.Prompt, slot.Marker) {
-		t.Error("prompt should show the file with the slot masked")
+	if want := "package main\n\n" + slot.Marker + "\n"; client.got.Prompt != want {
+		t.Errorf("prompt = %q, want the masked file alone (%q)", client.got.Prompt, want)
 	}
-	if strings.Contains(client.got.Prompt, ":: write main ::") {
-		t.Error("prompt should not contain the raw slot delimiters in the source block")
+	if !strings.Contains(client.got.System, "write main") {
+		t.Error("system prompt should include the instruction")
 	}
-	if !strings.Contains(client.got.Prompt, "package main") {
-		t.Error("prompt should include the surrounding file as context")
+	if !strings.Contains(client.got.System, "main.go") {
+		t.Error("system prompt should name the file being compiled")
 	}
-	if !strings.Contains(client.got.Prompt, "write main") {
-		t.Error("prompt should include the instruction")
-	}
-	if client.got.System == "" {
-		t.Error("request should carry the compiler's system prompt")
+	if !strings.Contains(client.got.System, slot.Marker) {
+		t.Error("system prompt should tell the model what marks the slot")
 	}
 }
 
@@ -155,8 +154,8 @@ func TestCompilePassesImage(t *testing.T) {
 	if client.got.Image != image {
 		t.Error("request should carry the image")
 	}
-	if !strings.Contains(client.got.Prompt, "image is attached") {
-		t.Error("prompt should tell the model an image is attached")
+	if !strings.Contains(client.got.System, "image is attached") {
+		t.Error("system prompt should tell the model an image is attached")
 	}
 }
 
@@ -339,6 +338,13 @@ func TestCompileLogsTheRequest(t *testing.T) {
 	if len(body.Messages) != 2 || body.Messages[0].Role != "system" || body.Messages[1].Role != "user" {
 		t.Fatalf("Request = %s, want a system message then the user message", e.Request)
 	}
+	var system string
+	if err := json.Unmarshal(body.Messages[0].Content, &system); err != nil {
+		t.Fatalf("decode system content %s: %v", body.Messages[0].Content, err)
+	}
+	if !strings.Contains(system, "return the answer") || !strings.Contains(system, "main.go") {
+		t.Errorf("Request = %s, want the instruction and the file name in the system message", e.Request)
+	}
 	var parts []struct {
 		Type     string `json:"type"`
 		Text     string `json:"text"`
@@ -349,8 +355,8 @@ func TestCompileLogsTheRequest(t *testing.T) {
 	if err := json.Unmarshal(body.Messages[1].Content, &parts); err != nil {
 		t.Fatalf("decode user content %s: %v", body.Messages[1].Content, err)
 	}
-	if len(parts) != 2 || parts[0].Type != "image_url" || !strings.Contains(parts[1].Text, "return the answer") {
-		t.Errorf("Request = %s, want the image then the prompt", e.Request)
+	if len(parts) != 2 || parts[0].Type != "image_url" || !strings.Contains(parts[1].Text, "func answer() int {") {
+		t.Errorf("Request = %s, want the image then the source", e.Request)
 	}
 	// The image is recorded by media type and size only — never its bytes.
 	if parts[0].ImageURL == nil || parts[0].ImageURL.URL != "data:image/png;base64,…5 bytes elided…" {
