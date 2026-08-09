@@ -1,0 +1,24 @@
+# This file is optional. With OPENAI_API_KEY or ANTHROPIC_API_KEY exported, psl
+# already works without any configuration; write a .pslrc to pick a different
+# model, point at another endpoint, or use several models in one file.
+#
+# Copy to .pslrc here or in your home directory, then fill in the keys.
+# A section name is the model name you write in a slot:
+#   :: gpt-5.6> xxx ::   resolves against [gpt-5.6]
+
+default_model=claude-opus-5
+
+[claude-opus-5]
+base_url=https://api.anthropic.com
+api_key=${ANTHROPIC_API_KEY}
+
+[gpt-5.6]
+base_url=https://api.openai.com
+api_key=${OPENAI_API_KEY}
+
+# Any OpenAI-compatible endpoint works, including a local one.
+# [local]
+# base_url=http://127.0.0.1:11434
+# api_key=unused
+# model=qwen3:8b
+# api=openai

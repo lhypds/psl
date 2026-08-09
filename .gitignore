@@ -1,2 +1,9 @@
 .vscode/
 .DS_Store
+
+# Build output
+/psl
+/dist/
+
+# Real configuration; .pslrc.example is the template
+.pslrc

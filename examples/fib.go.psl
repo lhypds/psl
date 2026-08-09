@@ -1,0 +1,16 @@
+package main
+
+import "fmt"
+
+// :: one-line doc comment for Fib, Go style ::
+func Fib(n int) int {
+	if n < 2 {
+		return n
+	}
+	a, b := 0, 1
+	:: fill in the iterative loop and return, using a and b ::
+}
+
+func main() {
+	fmt.Println(Fib(10))
+}
