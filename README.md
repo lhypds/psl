@@ -111,6 +111,25 @@ psl ui.html.psl --image design.png
 PNG, JPEG, GIF and WebP are supported.
 
 
+Adding a Prompt
+
+A slot says what to write; `--prompt` says what the code has to fit. Pass it whatever the model could not know from the file alone — the API being called, what each parameter means, in what units — and it is added to the system prompt for the slot resolved on that run:
+
+```shell
+psl bot.py.psl --prompt "move(x, y) takes absolute screen coordinates in pixels, origin top-left; click() takes no arguments"
+```
+
+Now `:: move to the OK button ::` produces `move(120, 480)` rather than a plausible guess at relative offsets or a fraction of the screen.
+
+The guidance describes the file, not the one slot, so it is worth repeating on every run — a file takes as many runs as it has slots. Keep a briefing in a file and hand psl the path instead:
+
+```shell
+psl bot.py.psl --prompt api.md
+```
+
+`--prompt` reads the file when its value names one, and otherwise sends the text as given. It is context, never the instruction: it does not say what to write into the slot, and it cannot override the compiler's own rules about the output.
+
+
 Example
 
 ```go

@@ -1,6 +1,8 @@
 package main
 
 import (
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -17,6 +19,10 @@ func TestParseArgs(t *testing.T) {
 		{name: "flag before file", args: []string{"--image", "b64", "a.psl"}, want: options{path: "a.psl", image: "b64"}},
 		{name: "equals form", args: []string{"a.psl", "--image=b64"}, want: options{path: "a.psl", image: "b64"}},
 		{name: "short form", args: []string{"-i", "b64", "a.psl"}, want: options{path: "a.psl", image: "b64"}},
+		{name: "prompt", args: []string{"a.psl", "--prompt", "move takes pixels"}, want: options{path: "a.psl", prompt: "move takes pixels"}},
+		{name: "prompt equals form", args: []string{"--prompt=pixels", "a.psl"}, want: options{path: "a.psl", prompt: "pixels"}},
+		{name: "prompt short form", args: []string{"-p", "pixels", "a.psl"}, want: options{path: "a.psl", prompt: "pixels"}},
+		{name: "image and prompt together", args: []string{"a.psl", "-i", "b64", "-p", "pixels"}, want: options{path: "a.psl", image: "b64", prompt: "pixels"}},
 		{name: "help", args: []string{"--help"}, want: options{help: true}},
 		{name: "help wins over a file", args: []string{"a.psl", "-h"}, want: options{path: "a.psl", help: true}},
 		{name: "version", args: []string{"-v"}, want: options{version: true}},
@@ -30,6 +36,7 @@ func TestParseArgs(t *testing.T) {
 		{name: "path named update", args: []string{"./update"}, want: options{path: "./update"}},
 		{name: "unknown flag", args: []string{"a.psl", "--loud"}, isErr: true},
 		{name: "image without a value", args: []string{"a.psl", "--image"}, isErr: true},
+		{name: "prompt without a value", args: []string{"a.psl", "--prompt"}, isErr: true},
 	}
 
 	for _, tc := range tests {
@@ -49,6 +56,49 @@ func TestParseArgs(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestLoadPrompt(t *testing.T) {
+	dir := t.TempDir()
+	brief := filepath.Join(dir, "api.md")
+	if err := os.WriteFile(brief, []byte("move() takes absolute pixels\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	empty := filepath.Join(dir, "empty.md")
+	if err := os.WriteFile(empty, []byte("  \n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Run("no prompt", func(t *testing.T) {
+		if got, err := loadPrompt(""); err != nil || got != "" {
+			t.Errorf("loadPrompt(\"\") = %q, %v; want empty and no error", got, err)
+		}
+	})
+	t.Run("text", func(t *testing.T) {
+		const text = "move() takes absolute pixels"
+		if got, err := loadPrompt(text); err != nil || got != text {
+			t.Errorf("loadPrompt(%q) = %q, %v; want the text itself", text, got, err)
+		}
+	})
+	t.Run("file", func(t *testing.T) {
+		got, err := loadPrompt(brief)
+		if err != nil {
+			t.Fatalf("loadPrompt(%q) error: %v", brief, err)
+		}
+		if got != "move() takes absolute pixels\n" {
+			t.Errorf("loadPrompt(%q) = %q, want the file's contents", brief, got)
+		}
+	})
+	t.Run("a directory is not a prompt file", func(t *testing.T) {
+		if got, err := loadPrompt(dir); err != nil || got != dir {
+			t.Errorf("loadPrompt(%q) = %q, %v; want the argument as text", dir, got, err)
+		}
+	})
+	t.Run("empty file", func(t *testing.T) {
+		if _, err := loadPrompt(empty); err == nil {
+			t.Errorf("loadPrompt(%q) succeeded, want an error naming the empty file", empty)
+		}
+	})
 }
 
 func TestVersionString(t *testing.T) {

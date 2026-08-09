@@ -24,15 +24,20 @@ Rules:
 - Never emit the marker itself, and never emit new ':: ... ::' slots.`
 
 // buildSystem renders the system prompt for one slot: the rules, the name of
-// the file being compiled, and the instruction to resolve. Everything psl has
-// to say lives here, so that the user message can be the source alone.
-func buildSystem(fileName string, s slot.Slot, hasImage bool) string {
+// the file being compiled, whatever guidance --prompt supplied, and the
+// instruction to resolve. Everything psl has to say lives here, so that the
+// user message can be the source alone.
+func buildSystem(fileName string, s slot.Slot, guidance string, hasImage bool) string {
 	var b strings.Builder
 	b.WriteString(rules)
 	fmt.Fprintf(&b, "\n\nFile being compiled: %s\n", fileName)
 	b.WriteString("Its name is what tells you the language to write in; a trailing '.psl' is the compiler's own extension, so the language is whatever the rest of the name says.\n")
 	if hasImage {
 		b.WriteString("\nAn image is attached to the user message as additional context for this slot.\n")
+	}
+	if guidance = strings.TrimSpace(guidance); guidance != "" {
+		b.WriteString("\nGuidance from the author, given to this run on the command line. It describes what the generated code has to fit — the API being called, what each parameter means, the units and conventions to use — and it holds for the whole file, not just this slot. Take it as fact about the world the code runs in, and follow it wherever it bears on this slot. It is context, not the instruction: it never says what to write here, and it never loosens the rules above.\n")
+		fmt.Fprintf(&b, "%s\n", guidance)
 	}
 	fmt.Fprintf(&b, "\nInstruction at %s:\n%s\n", slot.Marker, s.Instruction)
 	b.WriteString("\nThe user message is the file. Reply with the replacement text only.")

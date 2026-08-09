@@ -25,6 +25,7 @@ type Options struct {
 	Path    string // file to compile, rewritten in place
 	Config  *pslrc.Config
 	Image   *llm.Image     // optional visual context for this run
+	Prompt  string         // optional guidance from --prompt, added to the system prompt
 	Log     *psllog.Logger // request log; nil records nothing
 	Version string         // psl version, recorded in the log
 
@@ -77,7 +78,7 @@ func Compile(ctx context.Context, opts Options) (*Result, error) {
 
 	req := llm.Request{
 		Model:     model.ID(),
-		System:    buildSystem(filepath.Base(opts.Path), s, opts.Image != nil),
+		System:    buildSystem(filepath.Base(opts.Path), s, opts.Prompt, opts.Image != nil),
 		Prompt:    slot.Mask(src, s),
 		Image:     opts.Image,
 		MaxTokens: model.MaxTokens,

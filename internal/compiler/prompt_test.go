@@ -10,7 +10,7 @@ import (
 func TestBuildSystem(t *testing.T) {
 	s := slot.Slot{Instruction: "write a fibonacci function"}
 
-	got := buildSystem("fib.go.psl", s, false)
+	got := buildSystem("fib.go.psl", s, "", false)
 	for _, want := range []string{"fib.go.psl", "write a fibonacci function", slot.Marker} {
 		if !strings.Contains(got, want) {
 			t.Errorf("system prompt is missing %q:\n%s", want, got)
@@ -19,9 +19,35 @@ func TestBuildSystem(t *testing.T) {
 	if strings.Contains(got, "image is attached") {
 		t.Error("system prompt mentions an image that was not attached")
 	}
+	if strings.Contains(got, "Guidance from the author") {
+		t.Error("system prompt announces guidance that was not given")
+	}
 
-	if !strings.Contains(buildSystem("fib.go.psl", s, true), "image is attached") {
+	if !strings.Contains(buildSystem("fib.go.psl", s, "", true), "image is attached") {
 		t.Error("system prompt should say when an image is attached")
+	}
+}
+
+func TestBuildSystemGuidance(t *testing.T) {
+	s := slot.Slot{Instruction: "move to the button"}
+	const guidance = "move() takes absolute screen coordinates in pixels"
+
+	got := buildSystem("bot.py.psl", s, guidance, false)
+	if !strings.Contains(got, guidance) {
+		t.Errorf("system prompt is missing the guidance:\n%s", got)
+	}
+	if !strings.Contains(got, "Guidance from the author") {
+		t.Errorf("guidance should be labelled as the author's, not left as loose text:\n%s", got)
+	}
+	// The guidance is context for the file; the instruction is still what says
+	// what to write, so it comes last.
+	if strings.Index(got, guidance) > strings.Index(got, s.Instruction) {
+		t.Errorf("guidance should precede the instruction:\n%s", got)
+	}
+	// Whitespace-only guidance is the same as none: --prompt "" or a file of
+	// blank lines must not announce a briefing that says nothing.
+	if strings.Contains(buildSystem("bot.py.psl", s, "  \n\t\n", false), "Guidance from the author") {
+		t.Error("blank guidance should be treated as no guidance")
 	}
 }
 

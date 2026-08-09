@@ -159,6 +159,29 @@ func TestCompilePassesImage(t *testing.T) {
 	}
 }
 
+func TestCompilePassesPrompt(t *testing.T) {
+	path := writeSource(t, "def click_ok():\n    :: move to the OK button ::\n")
+	client := &fakeClient{reply: "move(120, 480)"}
+	const guidance = "move() takes absolute screen coordinates in pixels"
+
+	if _, err := Compile(context.Background(), Options{
+		Path:      path,
+		Config:    testConfig(t),
+		Prompt:    guidance,
+		NewClient: func(*pslrc.Model) llm.Client { return client },
+	}); err != nil {
+		t.Fatalf("Compile() error: %v", err)
+	}
+	if !strings.Contains(client.got.System, guidance) {
+		t.Errorf("system prompt should carry --prompt:\n%s", client.got.System)
+	}
+	// --prompt is guidance about the file, not part of it: the user message
+	// stays the source alone.
+	if strings.Contains(client.got.Prompt, guidance) {
+		t.Errorf("user message = %q, want the source alone", client.got.Prompt)
+	}
+}
+
 func TestCompileNoSlots(t *testing.T) {
 	path := writeSource(t, "package main\n\nfunc main() {}\n")
 	_, err := compile(t, path, &fakeClient{reply: "unused"})

@@ -36,7 +36,7 @@ var version = ""
 const usage = `psl — Prompt Script Language compiler
 
 Usage:
-  psl <file.psl> [--image <base64_image>]
+  psl <file.psl> [--image <base64_image>] [--prompt <text>]
   psl update
 
 Each run resolves exactly one AI slot: psl finds the first remaining
@@ -49,6 +49,9 @@ Commands:
 Options:
   -i, --image <data>   image given to the slot resolved on this run;
                        accepts a file path, a data: URL, or raw base64
+  -p, --prompt <text>  guidance added to the system prompt: the API the code
+                       has to fit, what each parameter means, in what units;
+                       accepts the text itself or a path to a text file
   -h, --help           show this help
   -v, --version        show the version
 
@@ -89,6 +92,12 @@ func run(args []string) int {
 		return 1
 	}
 
+	prompt, err := loadPrompt(opts.prompt)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "psl: %v\n", err)
+		return 1
+	}
+
 	dir, err := os.Getwd()
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "psl: %v\n", err)
@@ -114,6 +123,7 @@ func run(args []string) int {
 		Path:    opts.path,
 		Config:  cfg,
 		Image:   image,
+		Prompt:  prompt,
 		Log:     logger,
 		Version: strings.TrimSpace(versionFile),
 	})
@@ -160,6 +170,7 @@ func runUpdate(ctx context.Context) int {
 type options struct {
 	path    string
 	image   string
+	prompt  string
 	update  bool
 	help    bool
 	version bool
@@ -186,6 +197,14 @@ func parseArgs(args []string) (options, error) {
 			opts.image = args[i]
 		case strings.HasPrefix(arg, "--image="):
 			opts.image = strings.TrimPrefix(arg, "--image=")
+		case arg == "-p" || arg == "--prompt":
+			if i+1 >= len(args) {
+				return opts, fmt.Errorf("%s needs a value", arg)
+			}
+			i++
+			opts.prompt = args[i]
+		case strings.HasPrefix(arg, "--prompt="):
+			opts.prompt = strings.TrimPrefix(arg, "--prompt=")
 		case strings.HasPrefix(arg, "-") && arg != "-":
 			return opts, fmt.Errorf("unknown option %q", arg)
 		// "update" is a command only as the first argument, so a file really
@@ -206,6 +225,29 @@ func parseArgs(args []string) (options, error) {
 		return opts, errors.New("no input file")
 	}
 	return opts, nil
+}
+
+// loadPrompt interprets the --prompt argument: the guidance itself, or the
+// contents of the file it names. A file is worth accepting because a briefing
+// on the API being written against outlives any one slot, and psl resolves one
+// slot per run — the same text would otherwise be retyped on every run. Text
+// describing how to fill a file in is not plausibly also the name of a file
+// sitting next to it, so an existing file wins without an explicit flag.
+func loadPrompt(arg string) (string, error) {
+	if arg == "" {
+		return "", nil
+	}
+	if info, err := os.Stat(arg); err != nil || !info.Mode().IsRegular() {
+		return arg, nil
+	}
+	data, err := os.ReadFile(arg)
+	if err != nil {
+		return "", fmt.Errorf("read prompt %s: %w", arg, err)
+	}
+	if strings.TrimSpace(string(data)) == "" {
+		return "", fmt.Errorf("prompt file %s is empty", arg)
+	}
+	return string(data), nil
 }
 
 // tokens renders what the request cost, for endpoints that report it.
