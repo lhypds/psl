@@ -127,16 +127,49 @@ func main() {
 
 ```shell
 $ psl fib.go.psl
-psl: fib.go.psl resolved with claude-opus-5 — one-line doc comment for Fib, Go style
+psl: fib.go.psl resolved with claude-opus-5 (1204 tokens: 1180 in, 24 out) — one-line doc comment for Fib, Go style
 psl: 1 slot(s) remaining, run psl again
 $ psl fib.go.psl
-psl: fib.go.psl resolved with claude-opus-5 — fill in the iterative loop and return, using a and b
+psl: fib.go.psl resolved with claude-opus-5 (1281 tokens: 1209 in, 72 out) — fill in the iterative loop and return, using a and b
 psl: no slots remaining
 ```
 
 Progress goes to stderr, so stdout stays clean. The compiler exits `0` on success and when no slots remain, `1` on a compilation or configuration error, and `2` on a usage error.
 
 `psl update` is the one argument that is not a file name — it upgrades psl itself, see Install. A file genuinely called `update` still compiles as `psl ./update`.
+
+
+.psl/psl.log
+------------
+
+Every AI request is recorded in `.psl/psl.log`, in the directory you run psl from. One request is one JSON object on one line — prompts and responses span many lines, so a line-per-request keeps the file appendable and greppable:
+
+```json
+{
+  "time": "2026-08-10T06:18:28+09:00",
+  "psl_version": "0.0.2",
+  "file": "fib.go.psl",
+  "slot": { "line": 3, "column": 2, "instruction": "fill in the iterative loop" },
+  "model": {
+    "name": "claude-opus-5", "id": "claude-opus-5",
+    "base_url": "https://api.anthropic.com", "api": "anthropic",
+    "endpoint": "https://api.anthropic.com/v1/messages", "max_tokens": 2048
+  },
+  "request": { "system": "…", "prompt": "…", "image": { "media_type": "image/png", "bytes": 70 } },
+  "response": { "text": "…", "stop_reason": "end_turn" },
+  "usage": { "input_tokens": 412, "output_tokens": 37, "total_tokens": 449 },
+  "duration_ms": 3841
+}
+```
+
+Failed requests are logged too, with `error` in place of `response` — which is what makes the log worth having when a slot comes back wrong.
+
+```shell
+jq -r 'select(.error) | [.time, .model.name, .error] | @tsv' .psl/psl.log   # what went wrong
+jq -s 'map(.usage.total_tokens // 0) | add' .psl/psl.log                     # tokens spent
+```
+
+Two things are deliberately absent: your API key, and the bytes of any attached image — an image is recorded by media type and size only. The log grows without bound and is never rotated; delete it whenever you like. Add `.psl/` to your `.gitignore` if you would rather not commit prompts.
 
 
 .pslrc
@@ -224,4 +257,4 @@ The released version lives in the `VERSION` file, and is embedded in the binary 
 
 `release.sh` refuses to run on a dirty tree, runs the tests, cross-compiles for macOS, Linux and Windows, packages each target with the README and `.pslrc.example` plus a `SHA256SUMS` file, then tags `v$VERSION` and publishes the GitHub release with `gh`. Set `TARGETS` to build a different matrix.
 
-The compiler is a thin pipeline: [internal/slot](internal/slot) finds and rewrites slots, [internal/pslrc](internal/pslrc) reads the configuration, [internal/llm](internal/llm) speaks the Anthropic and OpenAI chat APIs, and [internal/compiler](internal/compiler) ties them together and writes the file back atomically.
+The compiler is a thin pipeline: [internal/slot](internal/slot) finds and rewrites slots, [internal/pslrc](internal/pslrc) reads the configuration, [internal/llm](internal/llm) speaks the Anthropic and OpenAI chat APIs, [internal/psllog](internal/psllog) records each request, [internal/updater](internal/updater) handles `psl update`, and [internal/compiler](internal/compiler) ties them together and writes the file back atomically.

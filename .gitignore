@@ -7,3 +7,6 @@
 
 # Real configuration; .pslrc.example is the template
 .pslrc
+
+# Request log written by psl itself
+/.psl/
