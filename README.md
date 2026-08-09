@@ -245,7 +245,6 @@ make uninstall  # ./uninstall.sh
 make release    # ./release.sh
 ```
 
-
 Releasing
 
 The released version lives in the `VERSION` file, and is embedded in the binary — `psl --version` reports it however psl was built, adding the exact build when it differs.
