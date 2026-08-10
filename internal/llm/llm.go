@@ -41,6 +41,9 @@ type Request struct {
 	Prompt    string
 	Image     *Image
 	MaxTokens int
+	// Params are the model's `params=` from .pslrc, merged into the body
+	// beside the fields psl builds. See pslrc.Model.Params.
+	Params map[string]any
 }
 
 // Usage is what the model reported spending on a request.

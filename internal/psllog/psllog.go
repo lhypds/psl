@@ -58,8 +58,7 @@ type Slot struct {
 
 // Model is where the request was sent.
 type Model struct {
-	Name      string `json:"name"`     // section name in .pslrc
-	ID        string `json:"id"`       // model id sent to the API
+	Name      string `json:"name"`     // section name in .pslrc, and the id sent to the API
 	BaseURL   string `json:"base_url"` // never includes credentials
 	Endpoint  string `json:"endpoint"`
 	MaxTokens int    `json:"max_tokens,omitempty"`

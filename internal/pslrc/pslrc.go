@@ -19,6 +19,7 @@
 package pslrc
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -50,12 +51,17 @@ var providers = []struct {
 
 // Model is one `[section]` of the configuration.
 type Model struct {
-	Name      string // section name, and the default model id sent to the API
+	Name      string // section name, which is the model id sent to the API
 	BaseURL   string
 	APIKey    string
-	ModelID   string // `model=` override when the API's id differs from the section name
-	MaxTokens int    // `max_tokens=`, 0 means the package default
-	Origin    string // .pslrc path, or "$VAR" when the environment supplied it
+	MaxTokens int // `max_tokens=`, 0 means the package default
+	// Params are `params=`: fields merged into the request body as written.
+	// psl knows what a completion needs and nothing about what a particular
+	// endpoint offers on top of it — reasoning_effort, temperature, whatever
+	// the next one calls its own — so those go over untouched rather than
+	// through a key here for each. Nil when the section sets none.
+	Params map[string]any
+	Origin string // .pslrc path, or "$VAR" when the environment supplied it
 }
 
 // Config is a parsed .pslrc.
@@ -217,7 +223,11 @@ func (m *Model) set(key, value string) error {
 	case "api_key":
 		m.APIKey = value
 	case "model":
-		m.ModelID = value
+		// Removed. A section is named after the model it configures, so an id
+		// written here could only agree with the header or contradict it. The
+		// error names the rename rather than ignoring the line, since a silent
+		// drop would send the section name and fail at the endpoint instead.
+		return fmt.Errorf("model= was removed; the section name is the model id — rename [%s] to [%s]", m.Name, value)
 	case "api":
 		// Accepted and ignored. It used to pick a wire protocol; there is only
 		// one now, so an existing .pslrc keeps working rather than failing on a
@@ -228,12 +238,52 @@ func (m *Model) set(key, value string) error {
 			return fmt.Errorf("max_tokens must be a positive integer, got %q", value)
 		}
 		m.MaxTokens = n
+	case "params":
+		params, err := parseParams(value)
+		if err != nil {
+			return err
+		}
+		m.Params = params
 	case "default_model":
 		return fmt.Errorf("default_model must appear before any [model] section")
 	default:
 		return fmt.Errorf("unknown key %q", key)
 	}
 	return nil
+}
+
+// builtParams are the request fields psl fills in itself. Setting one from
+// `params=` would be a section quietly deciding what the compiler is for — the
+// file it was handed, or how much of an answer it will take — so it is refused
+// where it is written rather than found out from the endpoint's reply.
+var builtParams = []string{"model", "messages", "max_completion_tokens"}
+
+// parseParams reads `params=` — a JSON object, written on one line, whose
+// fields go into the request as they stand.
+//
+// Numbers are kept as they were typed. A temperature of 0 is written 0 and not
+// 0e+00, and a seed too large for a float64 arrives whole: what the endpoint
+// receives is what the line said.
+func parseParams(value string) (map[string]any, error) {
+	value = strings.TrimSpace(value)
+	if value == "" {
+		return nil, nil
+	}
+	dec := json.NewDecoder(strings.NewReader(value))
+	dec.UseNumber()
+	var params map[string]any
+	if err := dec.Decode(&params); err != nil {
+		return nil, fmt.Errorf(`params must be a JSON object — params={"temperature": 0} — got %q: %w`, value, err)
+	}
+	if dec.More() {
+		return nil, fmt.Errorf("params must be one JSON object and nothing after it, got %q", value)
+	}
+	for _, field := range builtParams {
+		if _, taken := params[field]; taken {
+			return nil, fmt.Errorf("params may not set %q: psl writes that field itself", field)
+		}
+	}
+	return params, nil
 }
 
 // Resolve returns the configuration for the model a slot asked for. An empty
@@ -282,14 +332,6 @@ func (c *Config) modelNames() string {
 	}
 	slices.Sort(names)
 	return strings.Join(names, ", ")
-}
-
-// ID is the model identifier sent to the API.
-func (m *Model) ID() string {
-	if m.ModelID != "" {
-		return m.ModelID
-	}
-	return m.Name
 }
 
 func stripComment(line string) string {

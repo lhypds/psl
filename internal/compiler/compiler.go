@@ -77,11 +77,12 @@ func Compile(ctx context.Context, opts Options) (*Result, error) {
 	client := newClient(model)
 
 	req := llm.Request{
-		Model:     model.ID(),
+		Model:     model.Name,
 		System:    buildSystem(filepath.Base(opts.Path), s, opts.Prompt, opts.Image != nil),
 		Prompt:    slot.Mask(src, s),
 		Image:     opts.Image,
 		MaxTokens: model.MaxTokens,
+		Params:    model.Params,
 	}
 
 	started := time.Now()
@@ -137,7 +138,6 @@ func (o Options) record(src string, s slot.Slot, model *pslrc.Model, req llm.Req
 		},
 		Model: psllog.Model{
 			Name:      model.Name,
-			ID:        model.ID(),
 			BaseURL:   model.BaseURL,
 			Endpoint:  llm.Endpoint(model),
 			MaxTokens: model.MaxTokens,

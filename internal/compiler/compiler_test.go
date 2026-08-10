@@ -324,7 +324,7 @@ func TestCompileLogsTheRequest(t *testing.T) {
 	if e.Slot.Line != 4 || e.Slot.Instruction != "return the answer" {
 		t.Errorf("Slot = %+v, want line 4 and the instruction", e.Slot)
 	}
-	if e.Model.Name != "claude-opus-5" || e.Model.ID != "claude-opus-5" {
+	if e.Model.Name != "claude-opus-5" {
 		t.Errorf("Model = %+v, want the resolved model", e.Model)
 	}
 	if e.Model.BaseURL != "https://api.anthropic.com" {

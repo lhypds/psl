@@ -2,6 +2,7 @@ package llm
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net/http"
 )
@@ -12,6 +13,43 @@ type openAIRequest struct {
 	Model               string          `json:"model"`
 	MaxCompletionTokens int             `json:"max_completion_tokens"`
 	Messages            []openAIMessage `json:"messages"`
+
+	// Params are `params=` from .pslrc, written into the body beside the three
+	// fields above rather than under a key of their own: they are the request's
+	// own fields, and an endpoint reading temperature does not read it out of a
+	// nested object. Merged by MarshalJSON, which is why they carry no tag.
+	Params map[string]any `json:"-"`
+}
+
+// MarshalJSON writes the request with its configured params merged in.
+//
+// The fields psl builds cannot be overwritten here — pslrc refuses a params
+// that names one — so a merge only ever adds, and what a section asked for
+// arrives spelled exactly as it was written.
+func (r openAIRequest) MarshalJSON() ([]byte, error) {
+	// A defined type off openAIRequest carries the field tags and none of the
+	// methods, so marshalling that is the plain encoding rather than this
+	// method calling itself.
+	type fields openAIRequest
+	data, err := json.Marshal(fields(r))
+	if err != nil {
+		return nil, err
+	}
+	if len(r.Params) == 0 {
+		return data, nil
+	}
+	var body map[string]json.RawMessage
+	if err := json.Unmarshal(data, &body); err != nil {
+		return nil, err
+	}
+	for name, value := range r.Params {
+		raw, err := json.Marshal(value)
+		if err != nil {
+			return nil, fmt.Errorf("params %s: %w", name, err)
+		}
+		body[name] = raw
+	}
+	return json.Marshal(body)
 }
 
 type openAIMessage struct {
@@ -52,6 +90,7 @@ func openAIBody(req Request) openAIRequest {
 		Model:               req.Model,
 		MaxCompletionTokens: maxTokens(req),
 		Messages:            openAIMessages(req),
+		Params:              req.Params,
 	}
 }
 

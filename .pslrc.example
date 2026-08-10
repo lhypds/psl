@@ -17,9 +17,15 @@ base_url=https://api.openai.com
 api_key=${OPENAI_API_KEY}
 
 # Every endpoint is spoken to the same way — OpenAI chat completions, which
-# Anthropic serves too — so a section is just a base URL, a key, and a model id.
-# Anything that speaks it works, including a local one.
-# [local]
+# Anthropic serves too — so a section is just a base URL and a key, under the
+# name of the model. Anything that speaks it works, including a local one.
+# [qwen3:8b]
 # base_url=http://127.0.0.1:11434
 # api_key=unused
-# model=qwen3:8b
+
+# A section can carry fields straight through to the endpoint. What they mean is
+# the endpoint's business; psl only writes them into the request.
+# [qwen3-vl:8b]
+# base_url=http://127.0.0.1:11434
+# api_key=ollama
+# params={"temperature": 0, "reasoning_effort": "none"}

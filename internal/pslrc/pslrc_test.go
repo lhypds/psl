@@ -39,8 +39,8 @@ func TestParse(t *testing.T) {
 	if claude.MaxTokens != 1024 {
 		t.Errorf("MaxTokens = %d, want 1024", claude.MaxTokens)
 	}
-	if claude.ID() != "claude-opus-5" {
-		t.Errorf("ID() = %q, want the section name", claude.ID())
+	if claude.Name != "claude-opus-5" {
+		t.Errorf("Name = %q, want the section name", claude.Name)
 	}
 }
 
@@ -53,7 +53,6 @@ default_model = local   ; trailing comment
 [local]
 base_url = "http://localhost:11434"
 api_key = ${PSL_TEST_KEY}
-model = qwen3:8b
 api = openai
 `, ".pslrc")
 	if err != nil {
@@ -66,8 +65,20 @@ api = openai
 	if m.BaseURL != "http://localhost:11434" {
 		t.Errorf("BaseURL = %q, quotes should be stripped", m.BaseURL)
 	}
-	if m.ID() != "qwen3:8b" {
-		t.Errorf("ID() = %q, want the model= override", m.ID())
+}
+
+// model= used to override the id when it differed from the section name. It is
+// gone, and a .pslrc still carrying it is told what to rename rather than left
+// to find out from the endpoint that it was ignored.
+func TestParseRejectsTheModelKey(t *testing.T) {
+	_, err := Parse("[local]\nbase_url=https://x\napi_key=k\nmodel=qwen3:8b\n", ".pslrc")
+	if err == nil {
+		t.Fatal("Parse() with model= succeeded, want an error naming the rename")
+	}
+	for _, want := range []string{"[local]", "[qwen3:8b]"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("Parse() error = %v, want it to name %s", err, want)
+		}
 	}
 }
 
@@ -256,7 +267,7 @@ func TestLoadFromEnvironment(t *testing.T) {
 			if err != nil {
 				t.Fatalf("Resolve(\"\") error: %v", err)
 			}
-			if m.Name != tc.wantModel || m.ID() != tc.wantModel {
+			if m.Name != tc.wantModel {
 				t.Errorf("resolved %q, want %q", m.Name, tc.wantModel)
 			}
 			if m.BaseURL != tc.wantURL {
@@ -352,5 +363,66 @@ func TestResolveNamesTheEnvironmentSource(t *testing.T) {
 		if !strings.Contains(err.Error(), want) {
 			t.Errorf("Resolve() error = %v, want it to mention %q", err, want)
 		}
+	}
+}
+
+// params= carries whatever an endpoint offers beyond a completion — a
+// reasoning switch, a temperature — into the request as written.
+func TestParseParams(t *testing.T) {
+	cfg, err := Parse(`
+[local]
+base_url=http://127.0.0.1:11434
+api_key=ollama
+params={"reasoning_effort": "none", "temperature": 0, "chat_template_kwargs": {"enable_thinking": false}}
+`, ".pslrc")
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	p := cfg.Models["local"].Params
+	if got := fmt.Sprint(p["reasoning_effort"]); got != "none" {
+		t.Errorf("reasoning_effort = %q, want none", got)
+	}
+	// Kept as written rather than turned into a float, so a 0 is sent as 0.
+	if got := fmt.Sprint(p["temperature"]); got != "0" {
+		t.Errorf("temperature = %q, want 0 exactly as it was typed", got)
+	}
+	nested, ok := p["chat_template_kwargs"].(map[string]any)
+	if !ok || nested["enable_thinking"] != false {
+		t.Errorf("chat_template_kwargs = %#v, want the nested object kept", p["chat_template_kwargs"])
+	}
+}
+
+// A section with no params= has none, rather than an empty object that would
+// be merged into every request for nothing.
+func TestParseWithoutParams(t *testing.T) {
+	cfg, err := Parse("[m]\nbase_url=https://x\napi_key=k", ".pslrc")
+	if err != nil {
+		t.Fatalf("Parse() error: %v", err)
+	}
+	if p := cfg.Models["m"].Params; p != nil {
+		t.Errorf("Params = %#v on a section that sets none, want nil", p)
+	}
+}
+
+func TestParseParamsErrors(t *testing.T) {
+	tests := []struct {
+		name string
+		text string
+		want string
+	}{
+		{"not an object", "[m]\nparams=[1, 2]", "must be a JSON object"},
+		{"not JSON at all", "[m]\nparams=temperature 0", "must be a JSON object"},
+		{"two objects", `[m]\nparams={"a":1} {"b":2}`, "nothing after it"},
+		{"overwrites the model", `[m]\nparams={"model": "other"}`, `may not set "model"`},
+		{"overwrites the messages", `[m]\nparams={"messages": []}`, `may not set "messages"`},
+		{"overwrites the token cap", `[m]\nparams={"max_completion_tokens": 1}`, "may not set"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			_, err := Parse(strings.ReplaceAll(tc.text, `\n`, "\n"), ".pslrc")
+			if err == nil || !strings.Contains(err.Error(), tc.want) {
+				t.Fatalf("Parse() error = %v, want it to contain %q", err, tc.want)
+			}
+		})
 	}
 }

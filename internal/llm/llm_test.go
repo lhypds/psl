@@ -243,3 +243,72 @@ func TestEndpointIsTheSameEverywhere(t *testing.T) {
 		}
 	}
 }
+
+// A model's params= go into the request body beside the fields psl builds,
+// spelled as they were written: an endpoint reads temperature off the request,
+// not out of an object psl invented to hold it.
+func TestParamsAreMergedIntoTheBody(t *testing.T) {
+	var got map[string]any
+	client, done := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		got = decodeBody(t, r)
+		io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"42"}}]}`)
+	})
+	defer done()
+
+	_, err := client.Complete(context.Background(), Request{
+		Model:  "test-model",
+		Prompt: "the answer",
+		Params: map[string]any{
+			"reasoning_effort":     "none",
+			"temperature":          json.Number("0"),
+			"chat_template_kwargs": map[string]any{"enable_thinking": false},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Complete() error: %v", err)
+	}
+	if got["reasoning_effort"] != "none" {
+		t.Errorf("reasoning_effort = %v, want none at the top level of the body", got["reasoning_effort"])
+	}
+	if got["temperature"] != float64(0) {
+		t.Errorf("temperature = %v, want 0", got["temperature"])
+	}
+	nested, ok := got["chat_template_kwargs"].(map[string]any)
+	if !ok || nested["enable_thinking"] != false {
+		t.Errorf("chat_template_kwargs = %#v, want the object sent whole", got["chat_template_kwargs"])
+	}
+	// What psl builds is still there and still its own.
+	if got["model"] != "test-model" {
+		t.Errorf("model = %v, want the request's own model", got["model"])
+	}
+	if _, ok := got["messages"].([]any); !ok {
+		t.Errorf("messages = %#v, want the message list psl built", got["messages"])
+	}
+}
+
+// Body is what the log records, and a request with params in it has to be
+// logged as the request that was actually sent.
+func TestBodyIncludesParams(t *testing.T) {
+	data, err := Body(Request{Model: "m", Prompt: "p", Params: map[string]any{"temperature": json.Number("0")}})
+	if err != nil {
+		t.Fatalf("Body() error: %v", err)
+	}
+	if !strings.Contains(string(data), `"temperature":0`) {
+		t.Errorf("Body() = %s, want the temperature in it", data)
+	}
+}
+
+// A request with no params is the request psl always sent.
+func TestNoParamsAddsNothing(t *testing.T) {
+	with, err := Body(Request{Model: "m", Prompt: "p", Params: map[string]any{}})
+	if err != nil {
+		t.Fatalf("Body() error: %v", err)
+	}
+	without, err := Body(Request{Model: "m", Prompt: "p"})
+	if err != nil {
+		t.Fatalf("Body() error: %v", err)
+	}
+	if string(with) != string(without) {
+		t.Errorf("an empty params changed the body:\n %s\n %s", with, without)
+	}
+}

@@ -10,7 +10,7 @@ Every AI request is recorded in `~/.psl/psl.log`, in your home directory — one
   "file": "/Users/you/code/psl/examples/fib.go.psl",
   "slot": { "line": 3, "column": 2, "instruction": "fill in the iterative loop" },
   "model": {
-    "name": "claude-opus-5", "id": "claude-opus-5",
+    "name": "claude-opus-5",
     "base_url": "https://api.anthropic.com",
     "endpoint": "https://api.anthropic.com/v1/chat/completions", "max_tokens": 2048
   },

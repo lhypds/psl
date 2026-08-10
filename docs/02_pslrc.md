@@ -3,7 +3,7 @@
 
 Specify API keys and models. The compiler looks for `.pslrc` in the current directory, then in your home directory.
 
-Each section name is the model name you write in a slot — `[claude-opus-5]` is what makes `:: claude-opus-5> xxx ::` resolve.
+Each section name is the model name you write in a slot — `[claude-opus-5]` is what makes `:: claude-opus-5> xxx ::` resolve. It is also the id sent to the API, so a section is named after the model it configures and nothing inside it renames that.
 
 ```text
 default_model=claude-opus-5
@@ -52,9 +52,31 @@ Besides `base_url` and `api_key`, a section accepts:
 
 | key | meaning |
 | --- | --- |
-| `model` | model id sent to the API, when it differs from the section name |
 | `max_tokens` | output limit for one slot (default 8192) |
+| `params` | a JSON object merged into the request body as written |
 | `api` | ignored; it used to pick a wire protocol, and there is only one now |
+
+`params` is the way through to whatever an endpoint offers beyond a completion. psl knows what a
+request needs — a model, the messages, a cap on the answer — and nothing about what any one endpoint
+puts alongside them, so those fields go over as they were typed rather than through a key here for
+each:
+
+```text
+[qwen3-vl:8b]
+base_url=http://127.0.0.1:11434
+api_key=ollama
+params={"temperature": 0, "reasoning_effort": "none"}
+```
+
+It is one JSON object on one line, and numbers are sent as they were written — a `temperature` of
+`0` arrives as `0`. The three fields psl builds itself — `model`, `messages`, `max_completion_tokens`
+— are refused where they are written: a section that could overwrite them would be deciding what the
+compiler is for.
+
+What a given field does is the endpoint's business and not psl's. A reasoning switch that endpoint
+does not read is a field it ignores, and a model that thinks whatever it is sent goes on thinking —
+some are built that way and have a separate non-reasoning release instead. If the point is a faster
+answer, time a slot before and after rather than trusting the switch.
 
 Every endpoint is spoken to identically — `POST <base_url>/v1/chat/completions` with the key as a bearer token, the OpenAI chat completions protocol. Anthropic serves it too, at its own base URL, so a model is configured by URL, key, and id alone; anything else that speaks it works the same way, a local server included.
 
