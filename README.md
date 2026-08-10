@@ -171,3 +171,11 @@ Documentation
 - [Logging](docs/01_Logging.md) — every AI request recorded in `~/.psl/psl.log`
 - [.pslrc](docs/02_pslrc.md) — API keys and models, and what psl does without a `.pslrc`
 - [Development](docs/03_Development.md) — building, testing and releasing psl
+
+
+License
+-------
+
+psl is free software: you can redistribute it and/or modify it under the terms of the [GNU General Public License, version 3](LICENSE) as published by the Free Software Foundation.
+
+Copyright © 2026 Heyang Liu
