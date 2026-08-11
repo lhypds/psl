@@ -3,6 +3,12 @@
 
 Specify API keys and models. The compiler looks for `.pslrc` in the current directory, then in your home directory.
 
+```shell
+psl config
+```
+
+opens that file in your terminal editor — `$VISUAL`, then `$EDITOR`, then whichever of `vim`, `vi` and `nano` is installed. If there is no `.pslrc` yet it creates `~/.pslrc` from the example shipped with psl, readable and writable by you alone, since this is the file API keys go in. The file is parsed when the editor exits, so a mistake in it is reported straight away.
+
 Each section name is the model name you write in a slot — `[claude-opus-5]` is what makes `:: claude-opus-5> xxx ::` resolve. It is also the id sent to the API, so a section is named after the model it configures and nothing inside it renames that.
 
 ```text

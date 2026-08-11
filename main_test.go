@@ -5,6 +5,8 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+
+	"psl/internal/pslrc"
 )
 
 func TestParseArgs(t *testing.T) {
@@ -27,13 +29,17 @@ func TestParseArgs(t *testing.T) {
 		{name: "help wins over a file", args: []string{"a.psl", "-h"}, want: options{path: "a.psl", help: true}},
 		{name: "version", args: []string{"-v"}, want: options{version: true}},
 		{name: "update command", args: []string{"update"}, want: options{update: true}},
+		{name: "config command", args: []string{"config"}, want: options{config: true}},
 		{name: "no file", args: nil, isErr: true},
 		{name: "two files", args: []string{"a.psl", "b.psl"}, isErr: true},
 		{name: "update takes no arguments", args: []string{"update", "a.psl"}, isErr: true},
+		{name: "config takes no arguments", args: []string{"config", "a.psl"}, isErr: true},
 		// "update" is a command only in first position, so a file of that name
 		// stays compilable as ./update.
 		{name: "update after a file is a second file", args: []string{"a.psl", "update"}, isErr: true},
 		{name: "path named update", args: []string{"./update"}, want: options{path: "./update"}},
+		{name: "config after a file is a second file", args: []string{"a.psl", "config"}, isErr: true},
+		{name: "path named config", args: []string{"./config"}, want: options{path: "./config"}},
 		{name: "unknown flag", args: []string{"a.psl", "--loud"}, isErr: true},
 		{name: "image without a value", args: []string{"a.psl", "--image"}, isErr: true},
 		{name: "prompt without a value", args: []string{"a.psl", "--prompt"}, isErr: true},
@@ -99,6 +105,21 @@ func TestLoadPrompt(t *testing.T) {
 			t.Errorf("loadPrompt(%q) succeeded, want an error naming the empty file", empty)
 		}
 	})
+}
+
+// The example seeds a new .pslrc when psl config finds none, so a broken one
+// would hand the user a file psl refuses to read.
+func TestExampleFileParses(t *testing.T) {
+	cfg, err := pslrc.Parse(exampleFile, ".pslrc.example")
+	if err != nil {
+		t.Fatalf("Parse(.pslrc.example) error: %v", err)
+	}
+	if cfg.DefaultModel == "" {
+		t.Error("the example sets no default_model")
+	}
+	if _, ok := cfg.Models[cfg.DefaultModel]; !ok {
+		t.Errorf("default_model = %q, which has no section in the example", cfg.DefaultModel)
+	}
 }
 
 func TestVersionString(t *testing.T) {

@@ -157,6 +157,39 @@ func envKeyFor(baseURL string) string {
 	return EnvOpenAIKey
 }
 
+// EditPath names the .pslrc to open for editing from dir: the one Load would
+// read, and when there is none yet the one in the home directory, since a first
+// configuration belongs where it applies wherever psl is run.
+func EditPath(dir string) string {
+	paths := searchPath(dir)
+	for _, p := range paths {
+		if info, err := os.Stat(p); err == nil && info.Mode().IsRegular() {
+			return p
+		}
+	}
+	// Nothing on disk: the home directory's path, which searchPath appends, or
+	// dir's when there is no home directory to be had.
+	return paths[len(paths)-1]
+}
+
+// Create writes contents to path unless a file is already there, and reports
+// whether it wrote one. The mode is 0600 because this is the file API keys go
+// in; an existing file's mode is left as its owner set it.
+func Create(path, contents string) (bool, error) {
+	f, err := os.OpenFile(path, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
+	if os.IsExist(err) {
+		return false, nil
+	}
+	if err != nil {
+		return false, fmt.Errorf("create %s: %w", path, err)
+	}
+	defer f.Close()
+	if _, err := f.WriteString(contents); err != nil {
+		return false, fmt.Errorf("write %s: %w", path, err)
+	}
+	return true, f.Close()
+}
+
 func searchPath(dir string) []string {
 	paths := []string{filepath.Join(dir, Name)}
 	if home, err := os.UserHomeDir(); err == nil {

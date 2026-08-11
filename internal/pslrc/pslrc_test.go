@@ -227,6 +227,67 @@ func TestLoadWithoutConfigOrKeys(t *testing.T) {
 	}
 }
 
+func TestEditPath(t *testing.T) {
+	home := t.TempDir()
+	t.Setenv("HOME", home)
+	work := t.TempDir()
+
+	if got, want := EditPath(work), filepath.Join(home, Name); got != want {
+		t.Errorf("EditPath(%q) = %q, want the home file when there is none to edit yet", work, got)
+	}
+
+	if err := os.WriteFile(filepath.Join(home, Name), []byte(section("home-model")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := EditPath(work), filepath.Join(home, Name); got != want {
+		t.Errorf("EditPath(%q) = %q, want %q", work, got, want)
+	}
+
+	if err := os.WriteFile(filepath.Join(work, Name), []byte(section("local-model")), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, want := EditPath(work), filepath.Join(work, Name); got != want {
+		t.Errorf("EditPath(%q) = %q, want the local file to win, as Load has it", work, got)
+	}
+}
+
+func TestCreate(t *testing.T) {
+	path := filepath.Join(t.TempDir(), Name)
+
+	created, err := Create(path, sample)
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if !created {
+		t.Error("Create() = false, want it to report the file it wrote")
+	}
+	data, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(data) != sample {
+		t.Errorf("Create() wrote %q, want the contents it was given", data)
+	}
+	info, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if perm := info.Mode().Perm(); perm != 0o600 {
+		t.Errorf("mode = %04o, want 0600: the file holds API keys", perm)
+	}
+
+	created, err = Create(path, "default_model=other\n")
+	if err != nil {
+		t.Fatalf("Create() error: %v", err)
+	}
+	if created {
+		t.Error("Create() = true, want an existing file left alone")
+	}
+	if data, err = os.ReadFile(path); err != nil || string(data) != sample {
+		t.Errorf("Create() overwrote the file with %q, %v", data, err)
+	}
+}
+
 func TestLoadFromEnvironment(t *testing.T) {
 	tests := []struct {
 		name      string

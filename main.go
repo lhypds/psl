@@ -15,6 +15,7 @@ import (
 	"syscall"
 
 	"psl/internal/compiler"
+	"psl/internal/editor"
 	"psl/internal/imageref"
 	"psl/internal/llm"
 	"psl/internal/psllog"
@@ -28,6 +29,13 @@ import (
 //go:embed VERSION
 var versionFile string
 
+// exampleFile is what `psl config` writes when there is no .pslrc to edit yet,
+// so the editor opens a file to fill in rather than an empty buffer. It is the
+// same example the release ships alongside the binary.
+//
+//go:embed .pslrc.example
+var exampleFile string
+
 // version is the exact build, stamped in by build.sh with
 // -ldflags "-X main.version=...". It is shown alongside the released version
 // when the two differ, which is what identifies a development build.
@@ -37,6 +45,7 @@ const usage = `psl — Prompt Script Language compiler
 
 Usage:
   psl <file.psl> [--image <base64_image>] [--prompt <text>]
+  psl config
   psl update
 
 Each run resolves exactly one AI slot: psl finds the first remaining
@@ -44,6 +53,7 @@ Each run resolves exactly one AI slot: psl finds the first remaining
 back over the slot. Run psl again for the next slot.
 
 Commands:
+  config               edit .pslrc in $VISUAL, $EDITOR, or vim
   update               replace this executable with the latest GitHub release
 
 Options:
@@ -84,6 +94,9 @@ func run(args []string) int {
 
 	if opts.update {
 		return runUpdate(ctx)
+	}
+	if opts.config {
+		return runConfig()
 	}
 
 	image, err := imageref.Load(opts.image)
@@ -167,10 +180,47 @@ func runUpdate(ctx context.Context) int {
 	return 0
 }
 
+// runConfig opens the .pslrc in the user's editor: the one psl would read here,
+// or a new one in the home directory when there is none. The file is parsed
+// again afterwards, so a typo is reported now rather than on the next compile.
+func runConfig() int {
+	dir, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "psl: %v\n", err)
+		return 1
+	}
+	path := pslrc.EditPath(dir)
+	created, err := pslrc.Create(path, exampleFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "psl: %v\n", err)
+		return 1
+	}
+	if created {
+		fmt.Fprintf(os.Stderr, "psl: created %s\n", path)
+	}
+	if err := editor.Open(path); err != nil {
+		fmt.Fprintf(os.Stderr, "psl: %v\n", err)
+		return 1
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "psl: %v\n", err)
+		return 1
+	}
+	if _, err := pslrc.Parse(string(data), path); err != nil {
+		fmt.Fprintf(os.Stderr, "psl: %v\n", err)
+		return 1
+	}
+	fmt.Fprintf(os.Stderr, "psl: %s\n", path)
+	return 0
+}
+
 type options struct {
 	path    string
 	image   string
 	prompt  string
+	config  bool
 	update  bool
 	help    bool
 	version bool
@@ -207,13 +257,18 @@ func parseArgs(args []string) (options, error) {
 			opts.prompt = strings.TrimPrefix(arg, "--prompt=")
 		case strings.HasPrefix(arg, "-") && arg != "-":
 			return opts, fmt.Errorf("unknown option %q", arg)
-		// "update" is a command only as the first argument, so a file really
-		// named update is still compilable as ./update.
+		// These are commands only as the first argument, so a file really named
+		// update or config is still compilable as ./update.
 		case arg == "update" && i == 0:
 			opts.update = true
+		case arg == "config" && i == 0:
+			opts.config = true
 		default:
 			if opts.update {
 				return opts, fmt.Errorf("update takes no arguments, got %q", arg)
+			}
+			if opts.config {
+				return opts, fmt.Errorf("config takes no arguments, got %q", arg)
 			}
 			if opts.path != "" {
 				return opts, fmt.Errorf("psl compiles one file per run, got %q and %q", opts.path, arg)
@@ -221,7 +276,7 @@ func parseArgs(args []string) (options, error) {
 			opts.path = arg
 		}
 	}
-	if opts.path == "" && !opts.update {
+	if opts.path == "" && !opts.update && !opts.config {
 		return opts, errors.New("no input file")
 	}
 	return opts, nil

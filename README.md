@@ -162,7 +162,16 @@ psl: no slots remaining
 
 Progress goes to stderr, so stdout stays clean. The compiler exits `0` on success and when no slots remain, `1` on a compilation or configuration error, and `2` on a usage error.
 
-`psl update` is the one argument that is not a file name — it upgrades psl itself, see Install. A file genuinely called `update` still compiles as `psl ./update`.
+
+Editing the Configuration
+
+```shell
+psl config
+```
+
+This opens the `.pslrc` psl would read here — the one in the current directory, or the one in your home directory — in `$VISUAL`, `$EDITOR`, or whichever of `vim`, `vi` and `nano` is installed. With no `.pslrc` anywhere yet, it writes the shipped example to `~/.pslrc` first, so the editor opens a file with the sections already in it and the keys left blank. When you close the editor the file is parsed, and a typo is reported there and then rather than on the next compile.
+
+`psl config` and `psl update` are the two arguments that are not file names — `config` edits your configuration, `update` upgrades psl itself, see Install. A file genuinely called `update` still compiles as `psl ./update`.
 
 
 Documentation
