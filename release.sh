@@ -58,7 +58,7 @@ if [ ! -f VERSION ]; then
 fi
 VERSION="$(tr -d '[:space:]' < VERSION)"
 TAG="v$VERSION"
-TARGETS="${TARGETS:-darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64}"
+TARGETS="${TARGETS:-darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64 windows/arm64}"
 DIST="dist"
 
 echo "==> Releasing psl $TAG"
