@@ -37,6 +37,27 @@ jq -r 'select(.error) | [.time, .model.name, .error] | @tsv' ~/.psl/psl.log   # 
 jq -s 'map(.usage.total_tokens // 0) | add' ~/.psl/psl.log                    # tokens spent
 ```
 
+What each model has spent is asked often enough that psl adds it up itself, so the common case needs no `jq` at all:
+
+```shell
+$ psl usage
+MODEL          REQUESTS  INPUT  OUTPUT  TOTAL
+claude-opus-5        12  14203    1872  16075
+gpt-5.6               3   2110     405   2515
+TOTAL                15  16313    2277  18590
+psl: /Users/you/.psl/psl.log (2026-08-10 to 2026-08-13)
+```
+
+It reads the whole log, one row per `model.name`, heaviest first; the table is written to stdout and the log it came from to stderr, so the rows pipe onwards on their own. `input` and `output` are the halves the endpoint reported, and `total` is its own figure — or the two halves added up, for an endpoint that reports them and no sum. A request that failed has no `usage`: it counts in `REQUESTS`, and in an `ERRORS` column that only appears once there is something in it, without moving the tokens. A line too damaged to read — the tail of a log a run was killed in the middle of writing — is counted in a warning on stderr and stepped over.
+
+For anything the table does not answer — a single week, a per-file breakdown, the cost in money — the log is right there:
+
+```shell
+jq -s 'map(select(.time > "2026-08-01")) | group_by(.model.name)
+       | map({model: .[0].model.name, in: (map(.usage.input_tokens // 0) | add),
+              out: (map(.usage.output_tokens // 0) | add)})' ~/.psl/psl.log
+```
+
 `request` is the JSON body the endpoint received, verbatim — not psl's idea of it. Every model is spoken to the same way, so it is always an OpenAI chat completions body: the system prompt is the first message, and an attached image rides in the user message as a data URL. Everything psl composed is in there, and nothing else is: no field exists that the API was not sent. It is recorded for failed requests too, which is what makes a rejected call reproducible:
 
 ```shell

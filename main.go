@@ -8,9 +8,11 @@ import (
 	_ "embed"
 	"errors"
 	"fmt"
+	"io"
 	"os"
 	"os/signal"
 	"runtime/debug"
+	"strconv"
 	"strings"
 	"syscall"
 
@@ -46,6 +48,7 @@ const usage = `psl — Prompt Script Language compiler
 Usage:
   psl <file.psl> [--image <base64_image>] [--prompt <text>]
   psl config
+  psl usage
   psl update
 
 Each run resolves exactly one AI slot: psl finds the first remaining
@@ -54,6 +57,7 @@ back over the slot. Run psl again for the next slot.
 
 Commands:
   config               edit .pslrc in $VISUAL, $EDITOR, or vim
+  usage                tokens spent per model, totalled from ~/.psl/psl.log
   update               replace this executable with the latest GitHub release
 
 Options:
@@ -97,6 +101,9 @@ func run(args []string) int {
 	}
 	if opts.config {
 		return runConfig()
+	}
+	if opts.usage {
+		return runUsage(os.Stdout)
 	}
 
 	image, err := imageref.Load(opts.image)
@@ -216,11 +223,105 @@ func runConfig() int {
 	return 0
 }
 
+// runUsage totals what has been spent per model, from the log psl appends to
+// as it compiles. The table goes to stdout so it can be piped into something
+// else; which log it was read from goes to stderr, with everything else psl
+// says about its own workings.
+func runUsage(out io.Writer) int {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "psl: %v\n", err)
+		return 1
+	}
+	report, err := psllog.Summarize(home)
+	if err != nil && !errors.Is(err, psllog.ErrNoLog) {
+		fmt.Fprintf(os.Stderr, "psl: %v\n", err)
+		return 1
+	}
+	if report.Skipped > 0 {
+		fmt.Fprintf(os.Stderr, "psl: warning: %s: %d unreadable line(s) skipped\n", report.Path, report.Skipped)
+	}
+	// No log at all and a log holding nothing readable come to the same thing:
+	// there is nothing to report yet, which is not a failure.
+	if len(report.Models) == 0 {
+		fmt.Fprintf(os.Stderr, "psl: no requests logged yet (%s)\n", report.Path)
+		return 0
+	}
+	printReport(out, report)
+	fmt.Fprintf(os.Stderr, "psl: %s%s\n", report.Path, period(report.Total))
+	return 0
+}
+
+// printReport writes the per-model table, a column per number and a row per
+// model, padded so the numbers line up under their headings.
+func printReport(out io.Writer, report psllog.Report) {
+	// The errors column is only there when something failed: a column of
+	// zeroes would be noise in the ordinary case.
+	withErrors := report.Total.Errors > 0
+
+	row := func(t psllog.Totals) []string {
+		cells := []string{t.Model, strconv.Itoa(t.Requests)}
+		if withErrors {
+			cells = append(cells, strconv.Itoa(t.Errors))
+		}
+		return append(cells, strconv.Itoa(t.InputTokens), strconv.Itoa(t.OutputTokens), strconv.Itoa(t.TotalTokens))
+	}
+
+	header := []string{"MODEL", "REQUESTS"}
+	if withErrors {
+		header = append(header, "ERRORS")
+	}
+	header = append(header, "INPUT", "OUTPUT", "TOTAL")
+
+	rows := [][]string{header}
+	for _, model := range report.Models {
+		rows = append(rows, row(model))
+	}
+	// A single model's row is already the whole log, so the total is only
+	// worth adding when there is more than one row to add up.
+	if len(report.Models) > 1 {
+		total := report.Total
+		total.Model = "TOTAL"
+		rows = append(rows, row(total))
+	}
+
+	widths := make([]int, len(header))
+	for _, cells := range rows {
+		for i, cell := range cells {
+			widths[i] = max(widths[i], len([]rune(cell)))
+		}
+	}
+	for _, cells := range rows {
+		// The model is a name and reads from the left; the numbers are compared
+		// down the column and so line up on the right.
+		fmt.Fprintf(out, "%-*s", widths[0], cells[0])
+		for i, cell := range cells[1:] {
+			fmt.Fprintf(out, "  %*s", widths[i+1], cell)
+		}
+		fmt.Fprintln(out)
+	}
+}
+
+// period is the span the report covers, as a parenthesised suffix — empty when
+// no entry carried a time, and one date when they all fall on the same day.
+func period(total psllog.Totals) string {
+	if total.First.IsZero() || total.Last.IsZero() {
+		return ""
+	}
+	const day = "2006-01-02"
+	first, last := total.First.Format(day), total.Last.Format(day)
+	if first == last {
+		return fmt.Sprintf(" (%s)", first)
+	}
+	return fmt.Sprintf(" (%s to %s)", first, last)
+}
+
 type options struct {
 	path    string
 	image   string
 	prompt  string
 	config  bool
+	usage   bool
 	update  bool
 	help    bool
 	version bool
@@ -263,6 +364,8 @@ func parseArgs(args []string) (options, error) {
 			opts.update = true
 		case arg == "config" && i == 0:
 			opts.config = true
+		case arg == "usage" && i == 0:
+			opts.usage = true
 		default:
 			if opts.update {
 				return opts, fmt.Errorf("update takes no arguments, got %q", arg)
@@ -270,13 +373,16 @@ func parseArgs(args []string) (options, error) {
 			if opts.config {
 				return opts, fmt.Errorf("config takes no arguments, got %q", arg)
 			}
+			if opts.usage {
+				return opts, fmt.Errorf("usage takes no arguments, got %q", arg)
+			}
 			if opts.path != "" {
 				return opts, fmt.Errorf("psl compiles one file per run, got %q and %q", opts.path, arg)
 			}
 			opts.path = arg
 		}
 	}
-	if opts.path == "" && !opts.update && !opts.config {
+	if opts.path == "" && !opts.update && !opts.config && !opts.usage {
 		return opts, errors.New("no input file")
 	}
 	return opts, nil

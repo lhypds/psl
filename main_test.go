@@ -5,7 +5,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"psl/internal/psllog"
 	"psl/internal/pslrc"
 )
 
@@ -30,6 +32,7 @@ func TestParseArgs(t *testing.T) {
 		{name: "version", args: []string{"-v"}, want: options{version: true}},
 		{name: "update command", args: []string{"update"}, want: options{update: true}},
 		{name: "config command", args: []string{"config"}, want: options{config: true}},
+		{name: "usage command", args: []string{"usage"}, want: options{usage: true}},
 		{name: "no file", args: nil, isErr: true},
 		{name: "two files", args: []string{"a.psl", "b.psl"}, isErr: true},
 		{name: "update takes no arguments", args: []string{"update", "a.psl"}, isErr: true},
@@ -40,6 +43,9 @@ func TestParseArgs(t *testing.T) {
 		{name: "path named update", args: []string{"./update"}, want: options{path: "./update"}},
 		{name: "config after a file is a second file", args: []string{"a.psl", "config"}, isErr: true},
 		{name: "path named config", args: []string{"./config"}, want: options{path: "./config"}},
+		{name: "usage takes no arguments", args: []string{"usage", "a.psl"}, isErr: true},
+		{name: "usage after a file is a second file", args: []string{"a.psl", "usage"}, isErr: true},
+		{name: "path named usage", args: []string{"./usage"}, want: options{path: "./usage"}},
 		{name: "unknown flag", args: []string{"a.psl", "--loud"}, isErr: true},
 		{name: "image without a value", args: []string{"a.psl", "--image"}, isErr: true},
 		{name: "prompt without a value", args: []string{"a.psl", "--prompt"}, isErr: true},
@@ -145,6 +151,96 @@ func TestVersionString(t *testing.T) {
 
 			if got := versionString(); got != tc.want {
 				t.Errorf("versionString() = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}
+
+func TestPrintReport(t *testing.T) {
+	report := psllog.Report{
+		Models: []psllog.Totals{
+			{Model: "claude-opus-5", Requests: 12, InputTokens: 14203, OutputTokens: 1872, TotalTokens: 16075},
+			{Model: "gpt-5.6", Requests: 3, InputTokens: 2110, OutputTokens: 405, TotalTokens: 2515},
+		},
+		Total: psllog.Totals{Requests: 15, InputTokens: 16313, OutputTokens: 2277, TotalTokens: 18590},
+	}
+
+	var out strings.Builder
+	printReport(&out, report)
+	want := strings.Join([]string{
+		"MODEL          REQUESTS  INPUT  OUTPUT  TOTAL",
+		"claude-opus-5        12  14203    1872  16075",
+		"gpt-5.6               3   2110     405   2515",
+		"TOTAL                15  16313    2277  18590",
+		"",
+	}, "\n")
+	if out.String() != want {
+		t.Errorf("printReport() =\n%s\nwant\n%s", out.String(), want)
+	}
+}
+
+// One model's row is already the whole log; a total under it would say the
+// same thing twice.
+func TestPrintReportOmitsTheTotalForOneModel(t *testing.T) {
+	report := psllog.Report{
+		Models: []psllog.Totals{{Model: "m", Requests: 1, TotalTokens: 3}},
+		Total:  psllog.Totals{Requests: 1, TotalTokens: 3},
+	}
+	var out strings.Builder
+	printReport(&out, report)
+	if lines := strings.Count(out.String(), "\n"); lines != 2 {
+		t.Errorf("printReport() =\n%s\nwant a heading and one row", out.String())
+	}
+	// The heading has a TOTAL column of its own, so it is a row beginning with
+	// the word that would be the summary line.
+	for _, line := range strings.Split(out.String(), "\n") {
+		if strings.HasPrefix(line, "TOTAL") {
+			t.Errorf("printReport() =\n%s\nwant no total row", out.String())
+		}
+	}
+}
+
+// A column of zeroes would be noise, so errors are only shown once there are
+// some to show.
+func TestPrintReportShowsErrorsOnlyWhenThereAreSome(t *testing.T) {
+	clean := psllog.Report{
+		Models: []psllog.Totals{{Model: "m", Requests: 2, TotalTokens: 3}},
+		Total:  psllog.Totals{Requests: 2, TotalTokens: 3},
+	}
+	var out strings.Builder
+	printReport(&out, clean)
+	if strings.Contains(out.String(), "ERRORS") {
+		t.Errorf("printReport() =\n%s\nwant no errors column", out.String())
+	}
+
+	failing := psllog.Report{
+		Models: []psllog.Totals{{Model: "m", Requests: 2, Errors: 1, TotalTokens: 3}},
+		Total:  psllog.Totals{Requests: 2, Errors: 1, TotalTokens: 3},
+	}
+	out.Reset()
+	printReport(&out, failing)
+	if !strings.Contains(out.String(), "ERRORS") {
+		t.Errorf("printReport() =\n%s\nwant an errors column", out.String())
+	}
+}
+
+func TestPeriod(t *testing.T) {
+	first := time.Date(2026, 8, 10, 6, 18, 0, 0, time.UTC)
+	last := time.Date(2026, 8, 13, 9, 0, 0, 0, time.UTC)
+
+	tests := []struct {
+		name  string
+		total psllog.Totals
+		want  string
+	}{
+		{"no times", psllog.Totals{}, ""},
+		{"a span", psllog.Totals{First: first, Last: last}, " (2026-08-10 to 2026-08-13)"},
+		{"one day", psllog.Totals{First: first, Last: first.Add(time.Hour)}, " (2026-08-10)"},
+	}
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := period(tc.total); got != tc.want {
+				t.Errorf("period() = %q, want %q", got, tc.want)
 			}
 		})
 	}
