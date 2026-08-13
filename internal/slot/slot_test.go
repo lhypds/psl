@@ -128,6 +128,64 @@ func TestFind(t *testing.T) {
 			src:   "x = a ? b :: c",
 			found: false,
 		},
+		{
+			name:  "python slice with a step is not a slot",
+			src:   "evens = xs[::2]\nprint(evens)\n",
+			found: false,
+		},
+		{
+			name:  "python reverse slice is not a slot",
+			src:   "reversed = xs[::-1]\n",
+			found: false,
+		},
+		{
+			name:  "python slice with a variable step is not a slot",
+			src:   "thinned = xs[::step]\n",
+			found: false,
+		},
+		{
+			name:  "python empty slice copy is not a slot",
+			src:   "copy = xs[::]\n",
+			found: false,
+		},
+		{
+			name:  "numpy slices with spaced commas are not slots",
+			src:   "b = a[::2, ::-1]\n",
+			found: false,
+		},
+		{
+			name:        "slice before a slot does not swallow it",
+			src:         "evens = xs[::2]\n# :: sum the evens ::\n",
+			found:       true,
+			instruction: "sum the evens",
+			span:        ":: sum the evens ::",
+		},
+		{
+			name:        "slice with a variable step before a slot does not swallow it",
+			src:         "thinned = xs[::step]\n# :: print the result ::\n",
+			found:       true,
+			instruction: "print the result",
+			span:        ":: print the result ::",
+		},
+		{
+			name:        "python slices inside a slot body",
+			src:         ":: reverse xs with xs[::-1] and copy ys with ys[::] ::",
+			found:       true,
+			instruction: "reverse xs with xs[::-1] and copy ys with ys[::]",
+			span:        ":: reverse xs with xs[::-1] and copy ys with ys[::] ::",
+		},
+		{
+			name:        "slot inside brackets keeps a space after the opener",
+			src:         "primes = [:: the first three primes, comma separated ::]\n",
+			found:       true,
+			instruction: "the first three primes, comma separated",
+			span:        ":: the first three primes, comma separated ::",
+		},
+		{
+			name:  "slot glued to the bracket reads as a slice",
+			src:   "primes = [::three primes::]\n",
+			found: false,
+		},
 	}
 
 	for _, tc := range tests {

@@ -13,6 +13,15 @@
 //   - the opening `::` must not be glued to an identifier on its left;
 //   - the closing `::` must not be glued to an identifier on its right.
 //
+// Python's extended slices glue `::` to brackets and step values instead —
+// xs[::2], xs[::-1], xs[::step], a[::2, ::-1] — so additionally:
+//
+//   - a `::` glued to `[` on its left opens a slot only when followed by
+//     whitespace, which is how `[:: three primes ::]` stays a slot while
+//     xs[::step] stays a slice;
+//   - a `::` glued to a digit, `-`, `,` or `]` on its right is a slice's
+//     step, never a delimiter.
+//
 // Whitespace inside the delimiters is optional: `::do it::` and `:: do it ::`
 // are the same slot.
 package slot
@@ -91,25 +100,46 @@ func Mask(src string, s Slot) string {
 
 // opensSlot reports whether the "::" at i can start a slot. It cannot when an
 // identifier runs into it from the left, which is what keeps the `::` of
-// std::cout out of the way.
+// std::cout out of the way, and it cannot when it is glued into a slice the
+// way Python writes them: xs[::2], xs[::-1], xs[::step], a[::2, ::-1].
 func opensSlot(src string, i int) bool {
-	prev, size := utf8.DecodeLastRuneInString(src[:i])
-	if size == 0 {
-		return true
+	prev, psize := utf8.DecodeLastRuneInString(src[:i])
+	if psize != 0 && isIdentRune(prev) {
+		return false
 	}
-	return !isIdentRune(prev)
+	next, nsize := utf8.DecodeRuneInString(src[i+2:])
+	if nsize == 0 {
+		return true // nothing follows, so no closer will be found anyway
+	}
+	// Glued to the subscript bracket, "::" is a slice unless whitespace
+	// separates it from what follows: xs[::step] is a slice, while
+	// [:: three primes ::] is still a slot.
+	if prev == '[' && !unicode.IsSpace(next) {
+		return false
+	}
+	// A step glued to the right is a slice even when the "::" is not glued
+	// to the bracket, as in a[::2, ::-1]. No instruction starts with these.
+	if unicode.IsDigit(next) || next == '-' || next == ',' || next == ']' {
+		return false
+	}
+	return true
 }
 
 // findClose returns the offset of the "::" that closes a slot opened at from.
 // A "::" that runs straight into an identifier is scope resolution written
-// inside the instruction, not the end of it.
+// inside the instruction, not the end of it; one glued to `[` on its left or
+// to `-` on its right is a slice written inside the instruction, so
+// `:: reverse xs with xs[::-1] ::` keeps the slice.
 func findClose(src string, from int) (int, bool) {
 	for i := from; i+1 < len(src); i++ {
 		if src[i] != ':' || src[i+1] != ':' {
 			continue
 		}
 		next, size := utf8.DecodeRuneInString(src[i+2:])
-		if size != 0 && isIdentRune(next) {
+		if size != 0 && (isIdentRune(next) || next == '-') {
+			continue
+		}
+		if src[i-1] == '[' {
 			continue
 		}
 		return i, true

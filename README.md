@@ -85,6 +85,13 @@ A slot may span several lines. Since PSL lives inside files written in other lan
 
 That keeps `std::cout` out of the way both in the file and inside an instruction. The one thing to know: a `::` in an instruction that is *followed by a space* does read as the closing delimiter, so `:: fix the std:: usage ::` ends at `std::`. Written the ordinary way — `:: fix the std::cout usage ::` — it stays part of the instruction.
 
+Python glues `::` to brackets and step values instead, in its extended slices, so those are kept out of the way too:
+
+- a `::` glued to `[` on its left opens a slot only when whitespace follows it;
+- a `::` glued to a digit, `-`, `,` or `]` on its right is a slice's step, never a delimiter.
+
+So `xs[::2]`, `xs[::-1]`, `xs[::step]` and `a[::2, ::-1]` are never slots, in the file or inside an instruction — `:: reverse xs with xs[::-1] ::` keeps the slice. The one thing to know here: a slot that starts right at a `[` needs the whitespace, so a list literal is filled with `[:: three primes ::]` — glued on both sides, `[::three primes::]` reads as a slice.
+
 The model sees the whole file with the slot marked, so it writes in the surrounding language and reuses names already defined there. When a slot sits alone on its line, generated lines are indented to the slot's column.
 
 
@@ -175,6 +182,23 @@ $ psl fib.go.psl
 psl: fib.go.psl resolved with claude-opus-5 (1281 tokens: 1209 in, 72 out) — fill in the iterative loop and return, using a and b
 psl: no slots remaining
 ```
+
+The same works in an indentation-based language. A slot alone on its line is indented like the code around it, and generated lines line up with the slot's column, so the block lands inside the function body where the slot sat — and the slices stay slices:
+
+```python
+# :: one-line doc comment for fib, Python style ::
+def fib(n):
+    if n < 2:
+        return n
+    a, b = 0, 1
+    :: fill in the iterative loop and return, using a and b ::
+
+
+fibs = [fib(n) for n in range(10)]
+print(fibs[::-1])
+```
+
+Both files are in [examples](examples).
 
 Progress goes to stderr, so stdout stays clean. The compiler exits `0` on success and when no slots remain, `1` on a compilation or configuration error, and `2` on a usage error.
 

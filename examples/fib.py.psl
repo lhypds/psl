@@ -1,0 +1,10 @@
+# :: one-line doc comment for fib, Python style ::
+def fib(n):
+    if n < 2:
+        return n
+    a, b = 0, 1
+    :: fill in the iterative loop and return, using a and b ::
+
+
+fibs = [fib(n) for n in range(10)]
+print(fibs[::-1])

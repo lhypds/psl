@@ -190,6 +190,18 @@ func TestCompileNoSlots(t *testing.T) {
 	}
 }
 
+func TestCompilePythonSlicesAreNotSlots(t *testing.T) {
+	source := "evens = xs[::2]\nreversed = xs[::-1]\nthinned = xs[::step]\nb = a[::2, ::-1]\n"
+	path := filepath.Join(t.TempDir(), "main.py")
+	if err := os.WriteFile(path, []byte(source), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	_, err := compile(t, path, &fakeClient{reply: "unused"})
+	if !errors.Is(err, ErrNoSlots) {
+		t.Fatalf("Compile() error = %v, want ErrNoSlots", err)
+	}
+}
+
 func TestCompileLeavesFileUntouchedOnError(t *testing.T) {
 	source := ":: mystery-model> hi ::\n"
 
