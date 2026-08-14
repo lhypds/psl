@@ -61,6 +61,21 @@ Syntax
 
 No keyword, just one syntax.  
 
+File Names
+
+A PSL file is named after the language it is written in, with `.psl` on the end:
+
+```text
+fib.go.psl        Go
+bot.py.psl        Python
+Program.cs.psl    C#
+main.c.psl        C
+lib.rs.psl        Rust
+app.ts.psl        TypeScript
+```
+
+The extension in the middle is not decoration. `::` means something in most languages already, and which `::` are slots and which are the language's own syntax depends entirely on which language it is — so psl refuses a file that does not say. It has a folder of rules for C, C#, Go, JavaScript, Python, Rust and TypeScript; any other extension compiles under the generic rules, with a warning saying so.
+
 AI Slots
 
 Wrap text in `::` delimiters to mark it as an AI instruction:
@@ -78,12 +93,14 @@ Whitespace inside the delimiters is optional, so both of these are the same slot
 ::zed is running::
 ```
 
-A slot may span several lines. Since PSL lives inside files written in other languages, the delimiters are only recognised when they cannot be that language's own syntax. Scope resolution — C++'s `std::cout`, Rust's `Foo::Bar`, PHP's `self::method` — always glues `::` to an identifier, so:
+A slot may span several lines. Since PSL lives inside files written in other languages, the delimiters are only recognised where they cannot be that language's own syntax — see [Languages](docs/04_Languages.md) for what each one is taught to avoid. Two rules hold everywhere:
 
 - the opening `::` must not be glued to an identifier on its left;
 - the closing `::` must not be glued to an identifier on its right.
 
-That keeps `std::cout` out of the way both in the file and inside an instruction. The one thing to know: a `::` in an instruction that is *followed by a space* does read as the closing delimiter, so `:: fix the std:: usage ::` ends at `std::`. Written the ordinary way — `:: fix the std::cout usage ::` — it stays part of the instruction.
+Scope resolution always glues `::` to an identifier — C++'s `std::cout`, Rust's `Foo::Bar`, PHP's `self::method` — so that keeps it out of the way both in the file and inside an instruction. The one thing to know: a `::` in an instruction that is *followed by a space* does read as the closing delimiter, so `:: fix the std:: usage ::` ends at `std::`. Written the ordinary way — `:: fix the std::cout usage ::` — it stays part of the instruction.
+
+Beyond that, a slot never straddles a comment or a string literal. A `::` inside a string pairs only with a `::` in the same string, so `addr = "::1"` stays an address and `msg = ":: a friendly greeting ::"` still resolves.
 
 The model sees the whole file with the slot marked, so it writes in the surrounding language and reuses names already defined there. When a slot sits alone on its line, generated lines are indented to the slot's column.
 
@@ -121,7 +138,7 @@ psl <file.psl> --image <base64_image>
 `--image` also accepts a path to an image file or a `data:` URL, which is easier on the shell than a long base64 string:
 
 ```shell
-psl ui.html.psl --image design.png
+psl ui.tsx.psl --image design.png
 ```
 
 PNG, JPEG, GIF and WebP are supported.
@@ -216,6 +233,7 @@ Documentation
 - [Logging](docs/01_Logging.md) — every AI request recorded in `~/.psl/psl.log`
 - [.pslrc](docs/02_pslrc.md) — API keys and models, and what psl does without a `.pslrc`
 - [Development](docs/03_Development.md) — building, testing and releasing psl
+- [Languages](docs/04_Languages.md) — what each language avoids, and how to add one
 
 
 License

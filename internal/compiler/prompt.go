@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strings"
 
+	"psl/internal/lang"
 	"psl/internal/slot"
 )
 
@@ -24,14 +25,20 @@ Rules:
 - Never emit the marker itself, and never emit new ':: ... ::' slots.`
 
 // buildSystem renders the system prompt for one slot: the rules, the name of
-// the file being compiled, whatever guidance --prompt supplied, and the
-// instruction to resolve. Everything psl has to say lives here, so that the
-// user message can be the source alone.
-func buildSystem(fileName string, s slot.Slot, guidance string, hasImage bool) string {
+// the file being compiled and the language it is written in, whatever guidance
+// --prompt supplied, and the instruction to resolve. Everything psl has to say
+// lives here, so that the user message can be the source alone.
+func buildSystem(fileName string, l *lang.Language, s slot.Slot, guidance string, hasImage bool) string {
 	var b strings.Builder
 	b.WriteString(rules)
 	fmt.Fprintf(&b, "\n\nFile being compiled: %s\n", fileName)
-	b.WriteString("Its name is what tells you the language to write in; a trailing '.psl' is the compiler's own extension, so the language is whatever the rest of the name says.\n")
+	// The compiler already resolved the language from the name, so the model
+	// is told it outright rather than left to read it off the extension.
+	if l != nil && l != lang.Generic {
+		fmt.Fprintf(&b, "It is written in %s: the extension before the trailing '.psl' names the language, and '.psl' is the compiler's own.\n", l.Name)
+	} else {
+		b.WriteString("Its name is what tells you the language to write in; a trailing '.psl' is the compiler's own extension, so the language is whatever the rest of the name says.\n")
+	}
 	if hasImage {
 		b.WriteString("\nAn image is attached to the user message as additional context for this slot.\n")
 	}

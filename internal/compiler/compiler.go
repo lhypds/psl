@@ -10,6 +10,7 @@ import (
 	"path/filepath"
 	"time"
 
+	"psl/internal/lang"
 	"psl/internal/llm"
 	"psl/internal/psllog"
 	"psl/internal/pslrc"
@@ -36,6 +37,7 @@ type Options struct {
 // Result describes the slot that was resolved.
 type Result struct {
 	Model       string
+	Language    string // language the source was parsed under
 	Instruction string
 	Replacement string
 	Remaining   int // slots still unresolved after this run
@@ -45,6 +47,18 @@ type Result struct {
 // Compile resolves the first slot in opts.Path. The file is left untouched
 // unless the model returns output, so a failed run can simply be retried.
 func Compile(ctx context.Context, opts Options) (*Result, error) {
+	// Which `::` are slots depends on the language, and the name is what says
+	// which language it is, so a misnamed file cannot be parsed at all. This
+	// comes before the file is even opened: nothing else psl might complain
+	// about is worth hearing until the name is right.
+	language, ext, err := lang.Of(opts.Path)
+	if err != nil {
+		return nil, err
+	}
+	if language == lang.Generic {
+		fmt.Fprintf(os.Stderr, "psl: warning: no rules for .%s, using the generic rules\n", ext)
+	}
+
 	info, err := os.Stat(opts.Path)
 	if err != nil {
 		return nil, err
@@ -58,7 +72,7 @@ func Compile(ctx context.Context, opts Options) (*Result, error) {
 	}
 	src := string(source)
 
-	s, ok := slot.Find(src)
+	s, ok := slot.Find(src, language)
 	if !ok {
 		return nil, ErrNoSlots
 	}
@@ -78,7 +92,7 @@ func Compile(ctx context.Context, opts Options) (*Result, error) {
 
 	req := llm.Request{
 		Model:     model.Name,
-		System:    buildSystem(filepath.Base(opts.Path), s, opts.Prompt, opts.Image != nil),
+		System:    buildSystem(filepath.Base(opts.Path), language, s, opts.Prompt, opts.Image != nil),
 		Prompt:    slot.Mask(src, s),
 		Image:     opts.Image,
 		MaxTokens: model.MaxTokens,
@@ -103,9 +117,10 @@ func Compile(ctx context.Context, opts Options) (*Result, error) {
 	}
 	return &Result{
 		Model:       model.Name,
+		Language:    language.Name,
 		Instruction: s.Instruction,
 		Replacement: replacement,
-		Remaining:   slot.Count(compiled),
+		Remaining:   slot.Count(compiled, language),
 		Usage:       out.Usage,
 	}, nil
 }

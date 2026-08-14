@@ -19,6 +19,7 @@ import (
 	"psl/internal/compiler"
 	"psl/internal/editor"
 	"psl/internal/imageref"
+	"psl/internal/lang"
 	"psl/internal/llm"
 	"psl/internal/psllog"
 	"psl/internal/pslrc"
@@ -43,7 +44,11 @@ var exampleFile string
 // when the two differ, which is what identifies a development build.
 var version = ""
 
-const usage = `psl — Prompt Script Language compiler
+// usage names the languages psl has a folder for, so the list can never
+// drift from internal/lang.
+var usage = fmt.Sprintf(usageTemplate, languageList())
+
+const usageTemplate = `psl — Prompt Script Language compiler
 
 Usage:
   psl <file.psl> [--image <base64_image>] [--prompt <text>]
@@ -54,6 +59,13 @@ Usage:
 Each run resolves exactly one AI slot: psl finds the first remaining
 :: instruction :: in the file, generates its output, and writes the result
 back over the slot. Run psl again for the next slot.
+
+A PSL file is named <name>.<language>.psl — main.py.psl, Program.cs.psl,
+fib.go.psl. The extension before .psl says which language's own syntax psl
+must not read as a slot; an extension no language of psl's claims compiles
+under the generic rules.
+
+Languages: %s.
 
 Commands:
   config               edit .pslrc in $VISUAL, $EDITOR, or vim
@@ -73,6 +85,19 @@ Configuration lives in .pslrc, looked up in the current directory and then in
 your home directory. It is optional: without it psl uses OPENAI_API_KEY if that
 is set, otherwise ANTHROPIC_API_KEY. See README.md.
 `
+
+// languageList renders the registered languages as prose: "C, C# and Go".
+func languageList() string {
+	supported := lang.Supported()
+	names := make([]string, len(supported))
+	for i, l := range supported {
+		names[i] = l.Name
+	}
+	if len(names) < 2 {
+		return strings.Join(names, "")
+	}
+	return strings.Join(names[:len(names)-1], ", ") + " and " + names[len(names)-1]
+}
 
 func main() {
 	os.Exit(run(os.Args[1:]))

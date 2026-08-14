@@ -48,9 +48,16 @@ api_key=sk-o
 	return cfg
 }
 
+// writeSource writes a PSL file named the one way psl accepts: the language
+// before the compiler's own extension.
 func writeSource(t *testing.T, content string) string {
 	t.Helper()
-	path := filepath.Join(t.TempDir(), "main.go")
+	return writeNamed(t, "main.go.psl", content)
+}
+
+func writeNamed(t *testing.T, name, content string) string {
+	t.Helper()
+	path := filepath.Join(t.TempDir(), name)
 	if err := os.WriteFile(path, []byte(content), 0o644); err != nil {
 		t.Fatal(err)
 	}
@@ -253,9 +260,75 @@ func TestCompilePreservesFileMode(t *testing.T) {
 }
 
 func TestCompileMissingFile(t *testing.T) {
-	_, err := compile(t, filepath.Join(t.TempDir(), "absent.psl"), &fakeClient{})
+	_, err := compile(t, filepath.Join(t.TempDir(), "absent.go.psl"), &fakeClient{})
 	if !errors.Is(err, os.ErrNotExist) {
 		t.Fatalf("Compile() error = %v, want a not-exist error", err)
+	}
+}
+
+// The name is what says which language's syntax psl has to keep out of the way
+// of, so a file that does not say is refused before it is even opened.
+func TestCompileRequiresTheLanguageInTheName(t *testing.T) {
+	for _, name := range []string{"fib.psl", "fib.go", "fib"} {
+		t.Run(name, func(t *testing.T) {
+			path := writeNamed(t, name, ":: hi ::\n")
+			_, err := compile(t, path, &fakeClient{reply: "hello"})
+			if err == nil || !strings.Contains(err.Error(), "<name>.<language>.psl") {
+				t.Fatalf("Compile() error = %v, want the naming rule enforced", err)
+			}
+			if got := read(t, path); got != ":: hi ::\n" {
+				t.Errorf("file = %q, want it untouched", got)
+			}
+		})
+	}
+}
+
+// The second extension picks the rules, and the rules decide what is a slot:
+// the same source is one slot in Python and something else entirely without a
+// language to read it.
+func TestCompileParsesUnderTheLanguageInTheName(t *testing.T) {
+	const source = "rev = xs[::-1]\n# :: sum them ::\n"
+
+	path := writeNamed(t, "bot.py.psl", source)
+	result, err := compile(t, path, &fakeClient{reply: "total = sum(rev)"})
+	if err != nil {
+		t.Fatalf("Compile() error: %v", err)
+	}
+	if result.Instruction != "sum them" {
+		t.Errorf("Instruction = %q, want the slot, not the slice", result.Instruction)
+	}
+	if result.Language != "Python" {
+		t.Errorf("Language = %q, want Python", result.Language)
+	}
+	if got, want := read(t, path), "rev = xs[::-1]\n# total = sum(rev)\n"; got != want {
+		t.Errorf("file = %q, want %q", got, want)
+	}
+
+	// The same bytes under an extension no language claims: the slice is
+	// read as a delimiter, because nothing said otherwise.
+	other := writeNamed(t, "bot.zig.psl", source)
+	result, err = compile(t, other, &fakeClient{reply: "x"})
+	if err != nil {
+		t.Fatalf("Compile() error: %v", err)
+	}
+	if result.Language != "generic" {
+		t.Errorf("Language = %q, want the generic fallback", result.Language)
+	}
+	if result.Instruction == "sum them" {
+		t.Error("the generic rules should not know about Python's slices")
+	}
+}
+
+// The model is told what it is writing, rather than left to read it off the
+// name.
+func TestCompileTellsTheModelTheLanguage(t *testing.T) {
+	path := writeNamed(t, "Program.cs.psl", "class P {\n    :: write Main ::\n}\n")
+	client := &fakeClient{reply: "static void Main() {}"}
+	if _, err := compile(t, path, client); err != nil {
+		t.Fatalf("Compile() error: %v", err)
+	}
+	if !strings.Contains(client.got.System, "written in C#") {
+		t.Errorf("system prompt should name the language:\n%s", client.got.System)
 	}
 }
 

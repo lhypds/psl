@@ -34,7 +34,9 @@ make uninstall  # ./uninstall.sh
 make release    # ./release.sh
 ```
 
-The compiler is a thin pipeline: [internal/slot](../internal/slot) finds and rewrites slots, [internal/pslrc](../internal/pslrc) reads the configuration, [internal/llm](../internal/llm) speaks the OpenAI chat completions protocol, which is the only one, [internal/psllog](../internal/psllog) records each request, [internal/updater](../internal/updater) handles `psl update`, and [internal/compiler](../internal/compiler) ties them together and writes the file back atomically.
+The compiler is a thin pipeline: [internal/lang](../internal/lang) holds one folder per language saying which `::` are that language's own syntax, [internal/slot](../internal/slot) finds and rewrites slots by asking it about each `::`, [internal/pslrc](../internal/pslrc) reads the configuration, [internal/llm](../internal/llm) speaks the OpenAI chat completions protocol, which is the only one, [internal/psllog](../internal/psllog) records each request, [internal/updater](../internal/updater) handles `psl update`, and [internal/compiler](../internal/compiler) ties them together and writes the file back atomically.
+
+Adding support for a language means adding one folder to `internal/lang` and importing it — see [Languages](04_Languages.md).
 
 
 Releasing

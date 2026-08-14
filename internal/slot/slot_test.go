@@ -1,11 +1,18 @@
 package slot
 
-import "testing"
+import (
+	"testing"
+
+	"psl/internal/lang"
+	"psl/internal/lang/golang"
+	"psl/internal/lang/python"
+)
 
 func TestFind(t *testing.T) {
 	tests := []struct {
 		name        string
 		src         string
+		lang        *lang.Language // nil is lang.Generic
 		found       bool
 		model       string
 		instruction string
@@ -128,11 +135,29 @@ func TestFind(t *testing.T) {
 			src:   "x = a ? b :: c",
 			found: false,
 		},
+		// The language decides which `::` are its own syntax; the parser only
+		// asks. These two files are identical apart from the rules read over
+		// them. internal/lang holds the exhaustive per-language cases.
+		{
+			name:        "the language rules out its own syntax",
+			src:         "rev = xs[::-1]\n# :: sum them ::\n",
+			lang:        python.Language,
+			found:       true,
+			instruction: "sum them",
+			span:        ":: sum them ::",
+		},
+		{
+			name:        "without a language the same file reads differently",
+			src:         "rev = xs[::-1]\n# :: sum them ::\n",
+			found:       true,
+			instruction: "-1]\n#",
+			span:        "::-1]\n# ::",
+		},
 	}
 
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got, ok := Find(tc.src)
+			got, ok := Find(tc.src, tc.lang)
 			if ok != tc.found {
 				t.Fatalf("Find() found = %v, want %v (slot %+v)", ok, tc.found, got)
 			}
@@ -157,7 +182,7 @@ func TestFind(t *testing.T) {
 
 func TestFindReturnsFirstSlot(t *testing.T) {
 	src := "a :: one :: b :: two ::"
-	s, ok := Find(src)
+	s, ok := Find(src, nil)
 	if !ok {
 		t.Fatal("Find() found no slot")
 	}
@@ -169,15 +194,19 @@ func TestFindReturnsFirstSlot(t *testing.T) {
 func TestCount(t *testing.T) {
 	tests := []struct {
 		src  string
+		lang *lang.Language
 		want int
 	}{
-		{"", 0},
-		{"std::cout", 0},
-		{":: one ::", 1},
-		{":: one :: and :: two :: and :: three ::", 3},
+		{src: "", want: 0},
+		{src: "std::cout", want: 0},
+		{src: ":: one ::", want: 1},
+		{src: ":: one :: and :: two :: and :: three ::", want: 3},
+		// Counting reads the file under the same rules as finding, so a slice
+		// is no more a slot to Count than it is to Find.
+		{src: "xs[::-1]\n:: one ::\nys[::2]\n:: two ::\n", lang: python.Language, want: 2},
 	}
 	for _, tc := range tests {
-		if got := Count(tc.src); got != tc.want {
+		if got := Count(tc.src, tc.lang); got != tc.want {
 			t.Errorf("Count(%q) = %d, want %d", tc.src, got, tc.want)
 		}
 	}
@@ -186,7 +215,7 @@ func TestCount(t *testing.T) {
 func TestReplace(t *testing.T) {
 	t.Run("inline", func(t *testing.T) {
 		src := "x := :: the answer ::\n"
-		s, _ := Find(src)
+		s, _ := Find(src, golang.Language)
 		if got, want := Replace(src, s, "42"), "x := 42\n"; got != want {
 			t.Errorf("Replace() = %q, want %q", got, want)
 		}
@@ -194,7 +223,7 @@ func TestReplace(t *testing.T) {
 
 	t.Run("indents continuation lines", func(t *testing.T) {
 		src := "func f() int {\n\t:: return the answer ::\n}\n"
-		s, _ := Find(src)
+		s, _ := Find(src, golang.Language)
 		got := Replace(src, s, "x := 42\n\nreturn x")
 		want := "func f() int {\n\tx := 42\n\n\treturn x\n}\n"
 		if got != want {
@@ -204,7 +233,7 @@ func TestReplace(t *testing.T) {
 
 	t.Run("no reindent when the slot is not first on its line", func(t *testing.T) {
 		src := "\tx := :: two lines ::\n"
-		s, _ := Find(src)
+		s, _ := Find(src, golang.Language)
 		got := Replace(src, s, "a\nb")
 		want := "\tx := a\nb\n"
 		if got != want {
@@ -215,7 +244,7 @@ func TestReplace(t *testing.T) {
 
 func TestMask(t *testing.T) {
 	src := "before :: do it :: after"
-	s, _ := Find(src)
+	s, _ := Find(src, nil)
 	if got, want := Mask(src, s), "before "+Marker+" after"; got != want {
 		t.Errorf("Mask() = %q, want %q", got, want)
 	}
