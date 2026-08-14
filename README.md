@@ -74,7 +74,7 @@ lib.rs.psl        Rust
 app.ts.psl        TypeScript
 ```
 
-The extension in the middle is not decoration. `::` means something in most languages already, and which `::` are slots and which are the language's own syntax depends entirely on which language it is — so psl refuses a file that does not say. It has a folder of rules for C, C#, Go, JavaScript, Python, Rust and TypeScript; any other extension compiles under the generic rules, with a warning saying so.
+The extension in the middle is not decoration. `::` means something in most languages already, and which `::` are slots and which are the language's own syntax depends entirely on which language it is — so psl refuses a file that does not say. It has a folder of rules for C, C#, Go, JavaScript, Python, Rust, TypeScript and Pob's Macro PSL; any other extension compiles under the generic rules, with a warning saying so.
 
 AI Slots
 

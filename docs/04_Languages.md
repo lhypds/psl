@@ -63,6 +63,7 @@ What Each Language Adds
 | C# | [csharp](../internal/lang/csharp) | Verbatim strings (`@"…"`, quote doubled to escape, newlines allowed), raw strings (`"""…"""`), interpolation prefixes. `global::System` glues on both sides. |
 | Go | [golang](../internal/lang/golang) | Raw strings in backticks, which run over newlines and have no escapes. Go has no `::` of its own at all. The folder is `golang` because `go` is a keyword and cannot name a package. |
 | JavaScript | [javascript](../internal/lang/javascript) | Template literals, and telling a regular expression from division — `/^[a-f0-9:]+::1$/` is the case that needs it. |
+| Macro PSL | [macro](../internal/lang/macro) | Pob's macro language, `main.macro.psl`. It has no `::` of its own — every one in a macro is a slot — so all the folder is for is the double-quoted string a `typeText("ping ::1")` puts an address in. |
 | Python | [python](../internal/lang/python) | Slices: `xs[::-1]`, `xs[::2]`, `xs[1::2]`. Triple-quoted strings and the `r`/`b`/`f`/`u` prefixes. |
 | Rust | [rust](../internal/lang/rust) | Turbofish (`Vec::<i32>`), qualified paths (`<T as Default>::default()`), lifetimes that look like character literals (`&'a str`), raw strings fenced with hashes, nested block comments. |
 | TypeScript | [typescript](../internal/lang/typescript) | JavaScript's rules, reached by importing them. The type language brings no `::` with it, and this folder says so on purpose, so a TypeScript-only rule later has somewhere to go. |

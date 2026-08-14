@@ -13,6 +13,7 @@ import (
 	_ "psl/internal/lang/csharp"
 	_ "psl/internal/lang/golang"
 	_ "psl/internal/lang/javascript"
+	_ "psl/internal/lang/macro"
 	_ "psl/internal/lang/python"
 	_ "psl/internal/lang/rust"
 	_ "psl/internal/lang/typescript"

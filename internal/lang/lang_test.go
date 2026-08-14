@@ -13,6 +13,7 @@ import (
 	"psl/internal/lang/csharp"
 	"psl/internal/lang/golang"
 	"psl/internal/lang/javascript"
+	"psl/internal/lang/macro"
 	"psl/internal/lang/python"
 	"psl/internal/lang/rust"
 	"psl/internal/lang/typescript"
@@ -29,6 +30,7 @@ func TestOf(t *testing.T) {
 		{"Program.cs.psl", csharp.Language, "cs"},
 		{"main.c.psl", c.Language, "c"},
 		{"lib.rs.psl", rust.Language, "rs"},
+		{"main.macro.psl", macro.Language, "macro"},
 		{"app.jsx.psl", javascript.Language, "jsx"},
 		{"app.tsx.psl", typescript.Language, "tsx"},
 		{"/a/b/ui.ts.psl", typescript.Language, "ts"},
@@ -74,7 +76,7 @@ func TestOfRejectsNamesWithoutALanguage(t *testing.T) {
 // Every language folder must be reachable, and no two may claim one extension —
 // Register panics on a collision, so simply importing them proves it.
 func TestRegistryIsComplete(t *testing.T) {
-	if len(lang.Supported()) < 7 {
+	if len(lang.Supported()) < 8 {
 		t.Errorf("Supported() = %d languages, want every language folder registered", len(lang.Supported()))
 	}
 	for _, l := range lang.Supported() {

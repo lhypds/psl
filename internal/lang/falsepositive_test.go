@@ -8,6 +8,7 @@ import (
 	"psl/internal/lang/csharp"
 	"psl/internal/lang/golang"
 	"psl/internal/lang/javascript"
+	"psl/internal/lang/macro"
 	"psl/internal/lang/python"
 	"psl/internal/lang/rust"
 	"psl/internal/lang/typescript"
@@ -114,6 +115,20 @@ pub fn render<'a>(map: &'a HashMap<&'a str, u16>) -> String {
     let _ = (raw, list, <u16 as Default>::default(), '\'');
     out
 }
+`},
+
+		{macro.Language, `// Reply to whatever is waiting in the chat window.
+move(398, 915)   // the message box
+click()
+typeText("ping ::1 first")
+keyPress("return")
+sleep(250ms)
+
+/* Left out until the new dialog settles down:
+   typeText("then ::ffff:0:0")
+   keyPress("return")
+*/
+call("sign-out.macro.psl")
 `},
 
 		{javascript.Language, `const RE = /^[a-f0-9:]+::1$/;
