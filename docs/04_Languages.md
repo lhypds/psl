@@ -87,11 +87,12 @@ import "psl/internal/lang"
 
 // Language is Elixir: …
 var Language = lang.Register(&lang.Language{
-	Name:    "Elixir",
-	Exts:    []string{"ex", "exs"},
-	Comment: comment,
-	String:  stringLiteral,
-	Closes:  closes,
+	Name:          "Elixir",
+	Exts:          []string{"ex", "exs"},
+	Comment:       comment,
+	String:        stringLiteral,
+	Closes:        closes,
+	ExecutionPlan: executionPlan,
 })
 ```
 
@@ -100,6 +101,8 @@ var Language = lang.Register(&lang.Language{
 - `Comment` and `String` return the offset just past the construct starting at `i`. [syntax.go](../internal/lang/syntax.go) has the pieces to build them out of — `LineComment`, `BlockComment`, `Quoted`, `CharLiteral`, `CComments` — and the other language folders are worked examples.
 - `Brackets` asks the scanner to track `[` … `]` nesting, which only Python needs.
 - `Opens` and `Closes` veto a `::` the shared rules would have accepted. They run last, so a language folder only ever states what is peculiar to it.
+- `ExecutionPlan` lives in that language folder's `run.go` and selects the interpreter or compiler used by `psl run`. Process launching, temporary native binaries and exit-code handling are shared by [internal/executor](../internal/executor).
+- `TranslateRuntime` is optional. A language that supports slots resolved during program execution implements it in its own folder; Python's implementation and tests live entirely in [internal/lang/python](../internal/lang/python). Its generated calls should carry `RuntimeOptions.SourcePath` and each slot's original offset so the resolver can provide the complete source, language, file name and location to the model. With no runtime translator, `psl run` resolves slots before invoking the language.
 
 A folder registers itself when it is imported, so the new language also needs a line in [internal/compiler/languages.go](../internal/compiler/languages.go), which is where psl links the set of them in. Without it the folder is a language psl does not have, and a `.ex.psl` file would compile under the generic rules.
 

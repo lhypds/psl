@@ -60,6 +60,18 @@ func buildSystem(fileName string, l *lang.Language, s slot.Slot, guidance string
 	return b.String()
 }
 
+// buildRuntimeSystem explains how the ordinary source-replacement contract
+// changes when the generated program asks psl for a value. The original file
+// still supplies context and a precise call site, but stdout becomes the value
+// of the generated runtime expression rather than source written into a file.
+func buildRuntimeSystem(system string, line, column int) string {
+	return system + fmt.Sprintf(`
+
+Runtime resolution: the program has now reached the marker at line %d, column %d. The user message is the complete original PSL source, included as static context; it is not being rewritten. The instruction above is the runtime form after the host language has interpolated its current values, so prefer those current values when they differ from placeholders visible in the source.
+
+For this request, reply with the runtime value text that the expression should receive on standard output. Do not add source-language string quotes merely because the marker appears in code, and do not emit a function call that would resolve it again. Reply with the value only.`, line, column)
+}
+
 // clean strips the wrappers models add around otherwise correct output.
 func clean(out string) string {
 	out = strings.TrimSpace(out)

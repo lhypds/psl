@@ -162,6 +162,12 @@ for i in range(3):
     print(f":: give me a new greeting for iteration {i} ::")
 ```
 
+Each runtime resolution receives the complete original `.py.psl` source, the
+Python language, source file name, and exact line and column of the active
+slot. The instruction itself is evaluated as an f-string at the call site, so
+current loop variables and function values appear alongside that static code
+context. The original source is read for context only and remains unchanged.
+
 A Python runtime slot may be used directly as an expression or as the entire
 contents of a string literal. A slot mixed with other string text, or placed in
 a comment, is rejected because it cannot be turned into a value expression
@@ -179,8 +185,8 @@ Arguments after `--` belong to the generated program rather than to psl:
 psl run bot.py.psl -- --name Ada
 ```
 
-`--image` and `--prompt` remain psl options and are supplied to every runtime
-resolution:
+`--image` and `--prompt` remain psl options and are supplied in addition to
+that source context on every runtime resolution:
 
 ```shell
 psl run bot.py.psl --prompt api.md -- input.txt

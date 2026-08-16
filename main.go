@@ -182,6 +182,18 @@ func run(args []string) int {
 	}
 	if opts.resolve {
 		compileOpts.Path = "runtime.txt.psl"
+		if opts.contextPathSet {
+			source, err := os.ReadFile(opts.contextPath)
+			if err != nil {
+				fmt.Fprintf(os.Stderr, "psl: read runtime context %s: %v\n", opts.contextPath, err)
+				return 1
+			}
+			compileOpts.Runtime = &compiler.RuntimeContext{
+				Path:      opts.contextPath,
+				Source:    string(source),
+				SlotStart: opts.contextOffset,
+			}
+		}
 		result, err := compiler.CompileSource(ctx, opts.instruction, compileOpts)
 		if errors.Is(err, compiler.ErrNoSlots) {
 			fmt.Fprintln(os.Stderr, "psl: resolve needs one complete :: instruction :: slot")
@@ -377,18 +389,22 @@ func period(total psllog.Totals) string {
 }
 
 type options struct {
-	path        string
-	image       string
-	prompt      string
-	programArgs []string
-	run         bool
-	resolve     bool
-	instruction string
-	config      bool
-	usage       bool
-	update      bool
-	help        bool
-	version     bool
+	path             string
+	image            string
+	prompt           string
+	programArgs      []string
+	run              bool
+	resolve          bool
+	instruction      string
+	contextPath      string
+	contextPathSet   bool
+	contextOffset    int
+	contextOffsetSet bool
+	config           bool
+	usage            bool
+	update           bool
+	help             bool
+	version          bool
 }
 
 // parseArgs accepts flags before or after the file argument, since the README
@@ -426,6 +442,35 @@ func parseArgs(args []string) (options, error) {
 			opts.prompt = args[i]
 		case strings.HasPrefix(arg, "--prompt="):
 			opts.prompt = strings.TrimPrefix(arg, "--prompt=")
+		case arg == "--context-file":
+			if i+1 >= len(args) {
+				return opts, errors.New("--context-file needs a value")
+			}
+			i++
+			opts.contextPath = args[i]
+			opts.contextPathSet = true
+		case strings.HasPrefix(arg, "--context-file="):
+			opts.contextPath = strings.TrimPrefix(arg, "--context-file=")
+			opts.contextPathSet = true
+		case arg == "--context-offset":
+			if i+1 >= len(args) {
+				return opts, errors.New("--context-offset needs a value")
+			}
+			i++
+			offset, err := strconv.Atoi(args[i])
+			if err != nil || offset < 0 {
+				return opts, fmt.Errorf("--context-offset needs a non-negative integer, got %q", args[i])
+			}
+			opts.contextOffset = offset
+			opts.contextOffsetSet = true
+		case strings.HasPrefix(arg, "--context-offset="):
+			value := strings.TrimPrefix(arg, "--context-offset=")
+			offset, err := strconv.Atoi(value)
+			if err != nil || offset < 0 {
+				return opts, fmt.Errorf("--context-offset needs a non-negative integer, got %q", value)
+			}
+			opts.contextOffset = offset
+			opts.contextOffsetSet = true
 		case strings.HasPrefix(arg, "-") && arg != "-":
 			return opts, fmt.Errorf("unknown option %q", arg)
 		// These are commands only as the first argument, so a file really named
@@ -468,6 +513,14 @@ func parseArgs(args []string) (options, error) {
 	}
 	if opts.resolve && opts.instruction == "" {
 		return opts, errors.New("resolve needs one AI slot")
+	}
+	if opts.contextPathSet || opts.contextOffsetSet {
+		if !opts.resolve {
+			return opts, errors.New("--context-file and --context-offset are only valid with resolve")
+		}
+		if !opts.contextPathSet || opts.contextPath == "" || !opts.contextOffsetSet {
+			return opts, errors.New("resolve runtime context needs both --context-file and --context-offset")
+		}
 	}
 	if opts.path == "" && !opts.update && !opts.config && !opts.usage && !opts.resolve {
 		return opts, errors.New("no input file")

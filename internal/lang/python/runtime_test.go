@@ -9,6 +9,7 @@ import (
 
 	"psl/internal/executor"
 	"psl/internal/lang"
+	"psl/internal/slot"
 )
 
 func fakeLookPath(name string) (string, error) { return "/tools/" + name, nil }
@@ -68,14 +69,17 @@ func writeInterpreter(t *testing.T, path string) {
 
 func TestTranslateRuntimeEvaluatesAnFStringAtEachCallSite(t *testing.T) {
 	const source = "for i in range(2):\n    print(f\":: give me value number {i} ::\")\n"
-	translated, count, err := TranslateRuntime(source, lang.RuntimeOptions{Executable: "/usr/local/bin/psl"})
+	translated, count, err := translate(source, lang.RuntimeOptions{
+		Executable: "/usr/local/bin/psl",
+		SourcePath: "/work/app.py.psl",
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	if count != 1 {
 		t.Fatalf("translated slots = %d, want 1", count)
 	}
-	want := `print(__import__("subprocess").check_output(["/usr/local/bin/psl", "resolve", f":: give me value number {i} ::"], text=True))`
+	want := `print(__import__("subprocess").check_output(["/usr/local/bin/psl", "resolve", f":: give me value number {i} ::", "--context-file", "/work/app.py.psl", "--context-offset", "31"], text=True))`
 	if !strings.Contains(translated, want) {
 		t.Errorf("translated source = %q, want runtime f-string call %q", translated, want)
 	}
@@ -87,9 +91,18 @@ func TestTranslateRuntimeRejectsPartialStringsAndComments(t *testing.T) {
 		"comment":        `# :: write the loop ::`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			if _, _, err := TranslateRuntime(source, lang.RuntimeOptions{Path: "app.py.psl", Executable: "psl"}); err == nil {
+			if _, _, err := translate(source, lang.RuntimeOptions{Path: "app.py.psl", Executable: "psl"}); err == nil {
 				t.Fatal("translation succeeded, want a runtime-slot placement error")
 			}
 		})
 	}
+}
+
+func translate(source string, opts lang.RuntimeOptions) (string, int, error) {
+	found := slot.All(source, Language)
+	slots := make([]lang.RuntimeSlot, len(found))
+	for i, s := range found {
+		slots[i] = lang.RuntimeSlot{Start: s.Start, End: s.End}
+	}
+	return TranslateRuntime(source, Language.Analyze(source), slots, opts)
 }

@@ -13,10 +13,17 @@ import (
 // translator may capture in generated calls.
 type RuntimeOptions struct {
 	Path           string
+	SourcePath     string
 	Executable     string
 	Prompt         string
 	ImageMediaType string
 	ImageBase64    string
+}
+
+// RuntimeSlot is the source span a language runtime translator replaces.
+type RuntimeSlot struct {
+	Start int
+	End   int
 }
 
 // Language is one language's answer to two questions: which parts of a source
@@ -54,7 +61,7 @@ type Language struct {
 
 	// TranslateRuntime converts source slots into calls made when the generated
 	// program reaches them. Nil means this language keeps compile-time slots.
-	TranslateRuntime func(source string, opts RuntimeOptions) (string, int, error)
+	TranslateRuntime func(source string, syntax *Syntax, slots []RuntimeSlot, opts RuntimeOptions) (string, int, error)
 
 	// ExecutionPlan chooses how psl run executes the generated language file.
 	// Nil means the language has no conventional executor.

@@ -22,9 +22,9 @@ var lookPath executor.LookPath = exec.LookPath
 var execute = executor.Execute
 
 // runCompiled translates path, writes the language file beside it without the
-// trailing .psl, and runs that generated file. Python slots become runtime
-// expressions; the other languages are resolved before execution. The input is
-// never modified, and a failed translation leaves any previous output untouched.
+// trailing .psl, and runs that generated file. A language may translate slots
+// into runtime expressions; otherwise they are resolved before execution. The
+// input is never modified, and a failed translation leaves prior output intact.
 func runCompiled(ctx context.Context, opts compiler.Options, programArgs []string, in io.Reader, out, errOut io.Writer) (int, error) {
 	language, ext, err := lang.Of(opts.Path)
 	if err != nil {
@@ -63,8 +63,13 @@ func runCompiled(ctx context.Context, opts compiler.Options, programArgs []strin
 		if err != nil {
 			return 1, fmt.Errorf("find the psl executable: %w", err)
 		}
+		sourcePath, err := filepath.Abs(opts.Path)
+		if err != nil {
+			return 1, fmt.Errorf("resolve source path %s: %w", opts.Path, err)
+		}
 		runtimeOpts := lang.RuntimeOptions{
 			Path:       opts.Path,
+			SourcePath: sourcePath,
 			Executable: executable,
 			Prompt:     opts.Prompt,
 		}
@@ -72,8 +77,13 @@ func runCompiled(ctx context.Context, opts compiler.Options, programArgs []strin
 			runtimeOpts.ImageMediaType = opts.Image.MediaType
 			runtimeOpts.ImageBase64 = opts.Image.Base64
 		}
+		found := slot.All(source, language)
+		runtimeSlots := make([]lang.RuntimeSlot, len(found))
+		for i, s := range found {
+			runtimeSlots[i] = lang.RuntimeSlot{Start: s.Start, End: s.End}
+		}
 		var translated int
-		source, translated, err = language.TranslateRuntime(source, runtimeOpts)
+		source, translated, err = language.TranslateRuntime(source, language.Analyze(source), runtimeSlots, runtimeOpts)
 		if err != nil {
 			return 1, err
 		}

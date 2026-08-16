@@ -25,16 +25,26 @@ var ErrNoSlots = errors.New("no AI slots left")
 type Options struct {
 	Path    string // PSL source path; Compile rewrites it, CompileSource uses it as the logical name
 	Config  *pslrc.Config
-	Image   *llm.Image     // optional visual context for this run
-	Prompt  string         // optional guidance from --prompt, added to the system prompt
-	Log     *psllog.Logger // request log; nil records nothing
-	Version string         // psl version, recorded in the log
+	Image   *llm.Image      // optional visual context for this run
+	Prompt  string          // optional guidance from --prompt, added to the system prompt
+	Log     *psllog.Logger  // request log; nil records nothing
+	Version string          // psl version, recorded in the log
+	Runtime *RuntimeContext // optional original source context for a runtime slot
 
 	// NewClient builds the API client for a model. Defaults to llm.New.
 	NewClient func(*pslrc.Model) llm.Client
 	// NewSearcher builds the searcher answering web_search calls, for a model
 	// whose section turned search on. Defaults to llm.NewSearcher.
 	NewSearcher func(*pslrc.Model) llm.Searcher
+}
+
+// RuntimeContext locates a dynamically evaluated slot in its original PSL
+// source. The instruction passed to CompileSource may contain values expanded
+// by the running program; Source supplies the static file context around it.
+type RuntimeContext struct {
+	Path      string
+	Source    string
+	SlotStart int
 }
 
 // Result describes the slot that was resolved.
@@ -111,6 +121,37 @@ func resolve(ctx context.Context, src string, language *lang.Language, opts Opti
 		return nil, fmt.Errorf("%s: empty slot at %s", opts.Path, position(src, s.Start))
 	}
 
+	requestPath := opts.Path
+	requestSource := src
+	requestLanguage := language
+	requestSlot := s
+	runtime := false
+	if opts.Runtime != nil {
+		requestPath = opts.Runtime.Path
+		var err error
+		requestLanguage, _, err = lang.Of(requestPath)
+		if err != nil {
+			return nil, fmt.Errorf("runtime context: %w", err)
+		}
+		requestSource = opts.Runtime.Source
+		found := false
+		for _, candidate := range slot.All(requestSource, requestLanguage) {
+			if candidate.Start == opts.Runtime.SlotStart {
+				requestSlot = candidate
+				found = true
+				break
+			}
+		}
+		if !found {
+			return nil, fmt.Errorf("%s: no runtime slot starts at byte offset %d", requestPath, opts.Runtime.SlotStart)
+		}
+		// The original slot locates the call site, while the dynamically evaluated
+		// instruction carries current f-string values and chooses the model.
+		requestSlot.Instruction = s.Instruction
+		requestSlot.Model = s.Model
+		runtime = true
+	}
+
 	model, err := opts.Config.Resolve(s.Model)
 	if err != nil {
 		return nil, err
@@ -137,10 +178,15 @@ func resolve(ctx context.Context, src string, language *lang.Language, opts Opti
 		search = newSearcher(searchModel)
 	}
 
+	system := buildSystem(filepath.Base(requestPath), requestLanguage, s, opts.Prompt, opts.Image != nil, search != nil)
+	if runtime {
+		line, column := lineColumn(requestSource, requestSlot.Start)
+		system = buildRuntimeSystem(system, line, column)
+	}
 	req := llm.Request{
 		Model:     model.Name,
-		System:    buildSystem(filepath.Base(opts.Path), language, s, opts.Prompt, opts.Image != nil, search != nil),
-		Prompt:    slot.Mask(src, s),
+		System:    system,
+		Prompt:    slot.Mask(requestSource, requestSlot),
 		Image:     opts.Image,
 		MaxTokens: model.MaxTokens,
 		Params:    model.Params,
@@ -149,7 +195,9 @@ func resolve(ctx context.Context, src string, language *lang.Language, opts Opti
 
 	started := time.Now()
 	out, err := client.Complete(ctx, req)
-	opts.record(src, s, model, req, out, time.Since(started), err)
+	recordOpts := opts
+	recordOpts.Path = requestPath
+	recordOpts.record(requestSource, requestSlot, model, req, out, time.Since(started), err)
 	if err != nil {
 		return nil, err
 	}
@@ -162,7 +210,7 @@ func resolve(ctx context.Context, src string, language *lang.Language, opts Opti
 	compiled := slot.Replace(src, s, replacement)
 	return &Result{
 		Model:       model.Name,
-		Language:    language.Name,
+		Language:    requestLanguage.Name,
 		Instruction: s.Instruction,
 		Replacement: replacement,
 		Source:      compiled,

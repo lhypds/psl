@@ -1,5 +1,6 @@
-// Package lang holds, one folder per language, the rules that keep PSL's `::`
-// delimiters from colliding with a language's own syntax.
+// Package lang holds, one folder per language, its PSL syntax rules and psl run
+// hooks. Language-specific translation and execution choices stay in that
+// language's folder; only their shared interfaces live here.
 //
 // A PSL file is named after the language it is written in, and the extension
 // before `.psl` is what selects the rules:
@@ -21,8 +22,8 @@
 // one place, [psl/internal/compiler].
 //
 // Adding a language means adding one folder: a [Language] value registered with
-// its extensions, the comment and literal forms the scanner has to step over,
-// and whatever guards that language's own `::` needs.
+// its extensions, syntax rules, and execution plan. A language may also supply
+// a runtime translator when its slots should resolve during program execution.
 package lang
 
 import (

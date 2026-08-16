@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -87,7 +88,9 @@ func TestRunCompiledTranslatesPythonSlotsWithoutResolvingThem(t *testing.T) {
 	}
 	if got := string(generated); strings.Count(got, `check_output`) != 2 ||
 		!strings.Contains(got, `:: greeting as a quoted string ::`) ||
-		!strings.Contains(got, `:: farewell as a quoted string ::`) {
+		!strings.Contains(got, `:: farewell as a quoted string ::`) ||
+		strings.Count(got, `"--context-file"`) != 2 ||
+		!strings.Contains(got, strconv.Quote(input)) {
 		t.Errorf("generated source = %q, want two runtime PSL calls", got)
 	}
 	if original, err := os.ReadFile(input); err != nil || string(original) != source {

@@ -218,6 +218,58 @@ func TestCompileSourceDoesNotRewriteTheInputFile(t *testing.T) {
 	}
 }
 
+func TestCompileSourceUsesOriginalFileAsRuntimeContext(t *testing.T) {
+	const source = "title = \":: choose a title ::\"\nname = \"Ada\"\nprint(f\":: greet {name} ::\")\n"
+	const originalSlot = ":: greet {name} ::"
+	start := strings.Index(source, originalSlot)
+	client := &fakeClient{reply: "Hello, Ada!"}
+
+	result, err := CompileSource(context.Background(), ":: greet Ada ::", Options{
+		Path:   "runtime.txt.psl",
+		Config: testConfig(t),
+		Runtime: &RuntimeContext{
+			Path:      "/workspace/app.py.psl",
+			Source:    source,
+			SlotStart: start,
+		},
+		NewClient: func(*pslrc.Model) llm.Client { return client },
+	})
+	if err != nil {
+		t.Fatalf("CompileSource() error: %v", err)
+	}
+
+	wantPrompt := source[:start] + slot.Marker + source[start+len(originalSlot):]
+	if client.got.Prompt != wantPrompt {
+		t.Errorf("prompt = %q, want the complete original source with only the active slot masked (%q)", client.got.Prompt, wantPrompt)
+	}
+	for _, want := range []string{"app.py.psl", "written in Python", "greet Ada", "line 3, column 9", "runtime value"} {
+		if !strings.Contains(client.got.System, want) {
+			t.Errorf("runtime system prompt is missing %q:\n%s", want, client.got.System)
+		}
+	}
+	if result.Language != "Python" {
+		t.Errorf("Language = %q, want Python from the context file", result.Language)
+	}
+	if result.Source != "Hello, Ada!" || result.Replacement != "Hello, Ada!" {
+		t.Errorf("result = %+v, want only the runtime value", result)
+	}
+}
+
+func TestCompileSourceRejectsAStaleRuntimeSlotOffset(t *testing.T) {
+	_, err := CompileSource(context.Background(), ":: greet Ada ::", Options{
+		Path:   "runtime.txt.psl",
+		Config: testConfig(t),
+		Runtime: &RuntimeContext{
+			Path:      "/workspace/app.py.psl",
+			Source:    "print(\":: greet {name} ::\")\n",
+			SlotStart: 0,
+		},
+	})
+	if err == nil || !strings.Contains(err.Error(), "no runtime slot starts at byte offset 0") {
+		t.Fatalf("CompileSource() error = %v, want a stale-context offset error", err)
+	}
+}
+
 func TestCompileLeavesFileUntouchedOnError(t *testing.T) {
 	source := ":: mystery-model> hi ::\n"
 

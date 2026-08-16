@@ -83,6 +83,9 @@ func TestRegistryIsComplete(t *testing.T) {
 		if l.Name == "" {
 			t.Error("a language folder registered without a name")
 		}
+		if l.ExecutionPlan == nil {
+			t.Errorf("%s has no psl run execution plan", l.Name)
+		}
 		for _, ext := range l.Exts {
 			got, _, err := lang.Of("x." + ext + ".psl")
 			if err != nil || got != l {
