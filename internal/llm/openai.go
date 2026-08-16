@@ -17,6 +17,19 @@ type openAIRequest struct {
 	// turned on. Left out entirely otherwise, so a request from a section
 	// without it is byte for byte the request psl always sent.
 	Tools []openAITool `json:"tools,omitempty"`
+	// ReasoningEffort is "none" wherever the search tool is offered.
+	//
+	// Reasoning and tool calling are not always both available at once: OpenAI's
+	// gpt-5.6 family refuses function tools on this endpoint outright unless
+	// reasoning is off. Since psl is what put the tool in the request, psl is
+	// what turns reasoning off for it, rather than letting one switch in .pslrc
+	// produce a request the endpoint will not take.
+	//
+	// It is a default and not a decision: `params=` sets it back for an endpoint
+	// that has no such trouble, and a null there drops the field entirely for
+	// one that has never heard of it. Absent when no tool is offered, so a
+	// section without search is untouched by any of this.
+	ReasoningEffort string `json:"reasoning_effort,omitempty"`
 
 	// Params are `params=` from .pslrc, written into the body beside the fields
 	// above rather than under a key of their own: they are the request's
@@ -99,6 +112,14 @@ func (r openAIRequest) MarshalJSON() ([]byte, error) {
 		return nil, err
 	}
 	for name, value := range r.Params {
+		// A null removes the field rather than sending one. It is the only way
+		// to take back something psl defaulted — reasoning_effort, for a model
+		// that has never heard of it — and sending a literal null instead would
+		// be the same request the endpoint already refused.
+		if value == nil {
+			delete(body, name)
+			continue
+		}
 		raw, err := json.Marshal(value)
 		if err != nil {
 			return nil, fmt.Errorf("params %s: %w", name, err)
@@ -184,13 +205,17 @@ func openAIBody(req Request) openAIRequest {
 // openAIBodyWith is openAIBody over a conversation already in progress, which
 // is what a second round after a search is.
 func openAIBodyWith(req Request, messages []openAIMessage) openAIRequest {
-	return openAIRequest{
+	body := openAIRequest{
 		Model:               req.Model,
 		MaxCompletionTokens: maxTokens(req),
 		Messages:            messages,
 		Tools:               searchTools(req),
 		Params:              req.Params,
 	}
+	if req.Search != nil {
+		body.ReasoningEffort = noReasoning
+	}
+	return body
 }
 
 // openAIMessages is the message list for req. The system prompt is a message

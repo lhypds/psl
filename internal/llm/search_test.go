@@ -265,6 +265,94 @@ func TestSearcherReadsCitations(t *testing.T) {
 	}
 }
 
+// Reasoning and tool calling are not always both on offer — OpenAI's gpt-5.6
+// family refuses function tools on this endpoint unless reasoning is off — so
+// psl turns it off wherever it puts a tool in the request. One switch in .pslrc
+// must not produce a request the endpoint will not take.
+func TestSearchTurnsReasoningOff(t *testing.T) {
+	var got map[string]any
+	client, done := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		got = decodeBody(t, r)
+		io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}`)
+	})
+	defer done()
+
+	if _, err := client.Complete(context.Background(), Request{
+		Model: "m", Prompt: "p", Search: &stubSearcher{answer: "a"},
+	}); err != nil {
+		t.Fatalf("Complete() error: %v", err)
+	}
+	if got["reasoning_effort"] != "none" {
+		t.Errorf("reasoning_effort = %v, want none alongside the tool", got["reasoning_effort"])
+	}
+}
+
+// A section that never asked for search is untouched by any of it: the field is
+// not psl's to set on a request it did not put a tool in.
+func TestNoReasoningFieldWithoutSearch(t *testing.T) {
+	var got map[string]any
+	client, done := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		got = decodeBody(t, r)
+		io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}`)
+	})
+	defer done()
+
+	if _, err := client.Complete(context.Background(), Request{Model: "m", Prompt: "p"}); err != nil {
+		t.Fatalf("Complete() error: %v", err)
+	}
+	if _, set := got["reasoning_effort"]; set {
+		t.Errorf("reasoning_effort = %v on a request with no tool, want the field absent", got["reasoning_effort"])
+	}
+}
+
+// It is a default, not a decision. An endpoint that takes tools and reasoning
+// together gets its reasoning back from params=, which wins as it always does.
+func TestParamsOverrideTheReasoningDefault(t *testing.T) {
+	var got map[string]any
+	client, done := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		got = decodeBody(t, r)
+		io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}`)
+	})
+	defer done()
+
+	if _, err := client.Complete(context.Background(), Request{
+		Model: "m", Prompt: "p",
+		Search: &stubSearcher{answer: "a"},
+		Params: map[string]any{"reasoning_effort": "high"},
+	}); err != nil {
+		t.Fatalf("Complete() error: %v", err)
+	}
+	if got["reasoning_effort"] != "high" {
+		t.Errorf("reasoning_effort = %v, want the section's own value", got["reasoning_effort"])
+	}
+}
+
+// An endpoint that has never heard of the field needs it gone, not nulled, and
+// a null in params is the way to take back anything psl defaulted.
+func TestParamsNullRemovesAField(t *testing.T) {
+	var got map[string]any
+	client, done := newTestClient(t, func(w http.ResponseWriter, r *http.Request) {
+		got = decodeBody(t, r)
+		io.WriteString(w, `{"choices":[{"finish_reason":"stop","message":{"content":"ok"}}]}`)
+	})
+	defer done()
+
+	if _, err := client.Complete(context.Background(), Request{
+		Model: "m", Prompt: "p",
+		Search: &stubSearcher{answer: "a"},
+		Params: map[string]any{"reasoning_effort": nil},
+	}); err != nil {
+		t.Fatalf("Complete() error: %v", err)
+	}
+	if _, set := got["reasoning_effort"]; set {
+		t.Errorf("reasoning_effort = %v, want the field dropped entirely", got["reasoning_effort"])
+	}
+	// Dropping one field must not disturb the request around it.
+	if got["model"] != "m" || got["tools"] == nil {
+		t.Errorf("body = %#v, want the rest of the request intact", got)
+	}
+}
+
 // Function calling is what psl relies on to search anywhere, so it has to
 // survive the ways an OpenAI-compatible server differs from OpenAI: arguments
 // sent as the object itself rather than as a JSON string, and a tool call with

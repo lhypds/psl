@@ -44,7 +44,12 @@ func buildSystem(fileName string, l *lang.Language, s slot.Slot, guidance string
 		b.WriteString("\nAn image is attached to the user message as additional context for this slot.\n")
 	}
 	if hasSearch {
-		fmt.Fprintf(&b, "\nYou have a %s tool. The slot is resolved once, now, and its output is frozen into the file, so anything that has to be right at this moment — a current version, an API's present signature, a live fact — is worth looking up rather than recalling. Search before you write when the instruction turns on such a fact; write straight away when it does not. Having searched, put the fact in the file in the file's own language, not the search's prose, and cite a source only where the surrounding file already carries comments of that kind.\n", llm.SearchToolName)
+		fmt.Fprintf(&b, "\nYou have a %s tool. The slot is resolved once, now, and its output is frozen into the file, so anything that has to be right at this moment — a current version, an API's present signature, a live fact — is worth looking up rather than recalling. Search before you write when the instruction turns on such a fact; write straight away when it does not.\n", llm.SearchToolName)
+		// The rule about unclear instructions is the cheap way out of a slot the
+		// model cannot answer from memory, and asking for something current is
+		// exactly that shape. With the tool there it is no longer unclear, so
+		// the two rules are told apart here rather than left to compete.
+		b.WriteString("An instruction asking for something current — today's news, the latest release, what something costs now — is not an instruction you cannot tell the meaning of. It is one to search for. Not already knowing the answer is the reason to use the tool, never a reason to fall back on emitting the instruction's own words. Having searched, write what you found in the file's own language rather than in the search's prose, and cite a source only where the surrounding file already carries comments of that kind. If the search itself turns up nothing, say that in the file's language instead of inventing an answer.\n")
 	}
 	if guidance = strings.TrimSpace(guidance); guidance != "" {
 		b.WriteString("\nGuidance from the author, given to this run on the command line. It describes what the generated code has to fit — the API being called, what each parameter means, the units and conventions to use — and it holds for the whole file, not just this slot. Take it as fact about the world the code runs in, and follow it wherever it bears on this slot. It is context, not the instruction: it never says what to write here, and it never loosens the rules above.\n")

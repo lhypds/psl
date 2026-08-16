@@ -21,13 +21,20 @@ const SearchToolName = "web_search"
 // model that keeps searching rather than a budget the author is meant to spend.
 const MaxSearchRounds = 4
 
+// noReasoning is what a request offering the search tool asks for, since a
+// model that reasons is not always one that will take a tool. See
+// openAIRequest.ReasoningEffort.
+const noReasoning = "none"
+
 // searchDescription tells the model when reaching for the web is the right
 // move. A slot is resolved once, at compile time, and its output is frozen into
 // the file — so what matters is the fact being current now, not the model
 // having a general licence to browse.
 const searchDescription = `Search the web and get back an answer with the pages it came from.
 
-Use it whenever resolving the slot depends on something the file cannot tell you and your own knowledge may be stale: the current release of a language or library, an API's present signature, a package's latest version, a live fact about the world. Ask one focused question per call, and call it more than once rather than folding several questions into one query.`
+Use it whenever resolving the slot depends on something the file cannot tell you and your own knowledge may be stale: the current release of a language or library, an API's present signature, a package's latest version, a live fact about the world. Ask one focused question per call, and call it more than once rather than folding several questions into one query.
+
+Write the query the way someone would type it into a search engine, and leave words like "today", "latest" and "current" standing as they are. Do not work out a date and put it in the query: you do not reliably know today's date, and a query anchored to one only matches pages that happen to carry it — "today's news" finds the news, "news of 14 March 2026" finds nothing. The search knows when it is being run.`
 
 // searchSystem is the system prompt of the search model itself. It answers a
 // question for a compiler, not for a reader, so what is wanted is the fact and

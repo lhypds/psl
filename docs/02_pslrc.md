@@ -126,20 +126,36 @@ one it can already see: `OPENAI_API_KEY`, or the section's own key when that sec
 `[gpt-5-search-api]` section to configure that endpoint yourself, or name another model to search
 with something else entirely, a local one included.
 
-Not every model takes function tools on this endpoint. OpenAI's `gpt-5.6` family refuses them unless
-its reasoning is off, which `params` can say:
+Reasoning and tool calling are not always both on offer. OpenAI's `gpt-5.6` family refuses function
+tools on this endpoint outright unless reasoning is off — not turned down, off; `low` is refused the
+same as `high`. So a request carrying the search tool carries `reasoning_effort=none` with it, and
+`web_search=on` works on those models as it stands. psl put the tool there, so psl is what makes the
+request one the endpoint will take, rather than leaving one switch to produce a 400 about another.
+
+The cost is the plain one: **a model with `web_search=on` does not reason on any of its slots**, the
+ones that never search included. Turn it on for the section you look things up with, and leave the
+section you write code with alone — a slot picks its model, so both are available in the same file:
 
 ```text
+default_model=gpt-5.6-luna     # writes the code, reasoning intact
+
 [gpt-5.6-luna]
 base_url=https://api.openai.com
 api_key=<your_openai_api_key>
+
+[gpt-5.5]                      # :: gpt-5.5> ... :: for the slots that look things up
+base_url=https://api.openai.com
+api_key=<your_openai_api_key>
 web_search=on
-params={"reasoning_effort": "none"}
 ```
 
-`gpt-5`, `gpt-5.1`, `gpt-5.2`, `gpt-5.4` and `gpt-5.5` take them as they are. When an endpoint
-refuses the request, psl says which of your settings put a tool in it, and leaves the endpoint's own
-message above its own.
+`params` has the last word either way, since it is merged over what psl built: `{"reasoning_effort":
+"high"}` keeps reasoning on for an endpoint that has no such trouble, and `{"reasoning_effort":
+null}` drops the field entirely for one that has never heard of it — a null in `params` removes a
+field rather than sending one.
+
+When an endpoint refuses the request anyway, psl says which of your settings put a tool in it, and
+leaves the endpoint's own message above its own.
 
 A searched slot costs the searches as well as the slot: `psl usage` counts what the model spent, and
 the search model bills its own requests separately. The queries, the answers and the pages they came

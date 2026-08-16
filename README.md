@@ -172,7 +172,15 @@ const GoVersion = "1.26.5"
 
 The model decides whether a slot needs a search; `:: fill in the iterative loop ::` is written straight out without one. Searching is off unless a section asks for it, so psl never quietly goes to the network on your money. Every query and the pages it turned up are recorded in the log, which is where a generated value can be traced back to months later.
 
-psl offers the model a `web_search` function tool and answers the calls itself, rather than reaching for a provider's own hosted search — function calling is the one way of doing this that every endpoint psl speaks to understands. The searching is done by a search model, `gpt-5-search-api` by default and any section you name instead. See [.pslrc](docs/02_pslrc.md) for the whole of it, including the models that will not take a tool without their reasoning turned down.
+psl offers the model a `web_search` function tool and answers the calls itself, rather than reaching for a provider's own hosted search — function calling is the one way of doing this that every endpoint psl speaks to understands. The searching is done by a search model, `gpt-5-search-api` by default and any section you name instead.
+
+One thing is worth knowing before turning it on: some models, OpenAI's `gpt-5.6` family among them, will not take a function tool while they are reasoning. psl turns reasoning off wherever it offers the tool, so `web_search=on` works on them — which means a model with search on does not reason on any of its slots. Since a slot picks its own model, the usual arrangement is to leave the default model alone and give search to a second section, written into the slots that need it:
+
+```text
+:: gpt-5.5> the current stable Go release, as a quoted version string ::
+```
+
+See [.pslrc](docs/02_pslrc.md) for the whole of it.
 
 
 Adding a Prompt
