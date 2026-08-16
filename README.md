@@ -144,6 +144,37 @@ psl ui.tsx.psl --image design.png
 PNG, JPEG, GIF and WebP are supported.
 
 
+Searching the Web
+
+A slot is resolved once, now, and the answer is frozen into the file. When the instruction turns on a fact that psl cannot know and the model may remember wrongly — the current release of something, an API as it stands today — let the model go and look. Turn it on for a model in `.pslrc`:
+
+```text
+[gpt-5.5]
+base_url=https://api.openai.com
+api_key=<your_openai_api_key>
+web_search=on
+```
+
+```go
+// GoVersion is the Go release this project targets.
+const GoVersion = :: the current stable Go release, as a quoted version string ::
+```
+
+```shell
+$ psl version.go.psl
+psl: version.go.psl resolved with gpt-5.5 (1817 tokens: 1750 in, 67 out) — the current stable Go release, as a quoted version string
+psl: no slots remaining
+```
+
+```go
+const GoVersion = "1.26.5"
+```
+
+The model decides whether a slot needs a search; `:: fill in the iterative loop ::` is written straight out without one. Searching is off unless a section asks for it, so psl never quietly goes to the network on your money. Every query and the pages it turned up are recorded in the log, which is where a generated value can be traced back to months later.
+
+psl offers the model a `web_search` function tool and answers the calls itself, rather than reaching for a provider's own hosted search — function calling is the one way of doing this that every endpoint psl speaks to understands. The searching is done by a search model, `gpt-5-search-api` by default and any section you name instead. See [.pslrc](docs/02_pslrc.md) for the whole of it, including the models that will not take a tool without their reasoning turned down.
+
+
 Adding a Prompt
 
 A slot says what to write; `--prompt` says what the code has to fit. Pass it whatever the model could not know from the file alone — the API being called, what each parameter means, in what units — and it is added to the system prompt for the slot resolved on that run:

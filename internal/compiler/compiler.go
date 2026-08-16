@@ -32,6 +32,9 @@ type Options struct {
 
 	// NewClient builds the API client for a model. Defaults to llm.New.
 	NewClient func(*pslrc.Model) llm.Client
+	// NewSearcher builds the searcher answering web_search calls, for a model
+	// whose section turned search on. Defaults to llm.NewSearcher.
+	NewSearcher func(*pslrc.Model) llm.Searcher
 }
 
 // Result describes the slot that was resolved.
@@ -42,6 +45,9 @@ type Result struct {
 	Replacement string
 	Remaining   int // slots still unresolved after this run
 	Usage       llm.Usage
+	// Searches are the web searches the model made to resolve the slot, in the
+	// order it asked them. Empty unless the model's section turned search on.
+	Searches []llm.SearchResult
 }
 
 // Compile resolves the first slot in opts.Path. The file is left untouched
@@ -90,13 +96,30 @@ func Compile(ctx context.Context, opts Options) (*Result, error) {
 	}
 	client := newClient(model)
 
+	// A model that cannot reach the web is not an error to find out about after
+	// the slot has been paid for, so the search endpoint is resolved up front
+	// with the model's own.
+	searchModel, err := opts.Config.ResolveSearch(model)
+	if err != nil {
+		return nil, err
+	}
+	var search llm.Searcher
+	if searchModel != nil {
+		newSearcher := opts.NewSearcher
+		if newSearcher == nil {
+			newSearcher = llm.NewSearcher
+		}
+		search = newSearcher(searchModel)
+	}
+
 	req := llm.Request{
 		Model:     model.Name,
-		System:    buildSystem(filepath.Base(opts.Path), language, s, opts.Prompt, opts.Image != nil),
+		System:    buildSystem(filepath.Base(opts.Path), language, s, opts.Prompt, opts.Image != nil, search != nil),
 		Prompt:    slot.Mask(src, s),
 		Image:     opts.Image,
 		MaxTokens: model.MaxTokens,
 		Params:    model.Params,
+		Search:    search,
 	}
 
 	started := time.Now()
@@ -122,6 +145,7 @@ func Compile(ctx context.Context, opts Options) (*Result, error) {
 		Replacement: replacement,
 		Remaining:   slot.Count(compiled, language),
 		Usage:       out.Usage,
+		Searches:    out.Searches,
 	}, nil
 }
 
@@ -156,6 +180,7 @@ func (o Options) record(src string, s slot.Slot, model *pslrc.Model, req llm.Req
 			BaseURL:   model.BaseURL,
 			Endpoint:  llm.Endpoint(model),
 			MaxTokens: model.MaxTokens,
+			WebSearch: model.WebSearch,
 		},
 		Request:    body,
 		DurationMS: took.Milliseconds(),
@@ -164,6 +189,7 @@ func (o Options) record(src string, s slot.Slot, model *pslrc.Model, req llm.Req
 		entry.Error = callErr.Error()
 	}
 	if out != nil {
+		entry.Searches = searchEntries(out.Searches)
 		entry.Response = &psllog.Response{Text: out.Text, StopReason: out.StopReason}
 		entry.Usage = &psllog.Usage{
 			InputTokens:  out.Usage.InputTokens,
@@ -174,6 +200,24 @@ func (o Options) record(src string, s slot.Slot, model *pslrc.Model, req llm.Req
 	if err := o.Log.Log(entry); err != nil {
 		fmt.Fprintf(os.Stderr, "psl: warning: %v\n", err)
 	}
+}
+
+// searchEntries renders the searches for the log. A source is kept as its URL
+// alone: the title is the search model's phrasing of a page psl did not read,
+// and the URL is the part that can be checked later.
+func searchEntries(searches []llm.SearchResult) []psllog.Search {
+	if len(searches) == 0 {
+		return nil
+	}
+	entries := make([]psllog.Search, 0, len(searches))
+	for _, s := range searches {
+		entry := psllog.Search{Query: s.Query, Answer: s.Answer, Error: s.Error}
+		for _, source := range s.Sources {
+			entry.Sources = append(entry.Sources, source.URL)
+		}
+		entries = append(entries, entry)
+	}
+	return entries
 }
 
 // writeFile replaces path's contents atomically, so an interrupted write can

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"psl/internal/lang"
+	"psl/internal/llm"
 	"psl/internal/slot"
 )
 
@@ -28,7 +29,7 @@ Rules:
 // the file being compiled and the language it is written in, whatever guidance
 // --prompt supplied, and the instruction to resolve. Everything psl has to say
 // lives here, so that the user message can be the source alone.
-func buildSystem(fileName string, l *lang.Language, s slot.Slot, guidance string, hasImage bool) string {
+func buildSystem(fileName string, l *lang.Language, s slot.Slot, guidance string, hasImage, hasSearch bool) string {
 	var b strings.Builder
 	b.WriteString(rules)
 	fmt.Fprintf(&b, "\n\nFile being compiled: %s\n", fileName)
@@ -41,6 +42,9 @@ func buildSystem(fileName string, l *lang.Language, s slot.Slot, guidance string
 	}
 	if hasImage {
 		b.WriteString("\nAn image is attached to the user message as additional context for this slot.\n")
+	}
+	if hasSearch {
+		fmt.Fprintf(&b, "\nYou have a %s tool. The slot is resolved once, now, and its output is frozen into the file, so anything that has to be right at this moment — a current version, an API's present signature, a live fact — is worth looking up rather than recalling. Search before you write when the instruction turns on such a fact; write straight away when it does not. Having searched, put the fact in the file in the file's own language, not the search's prose, and cite a source only where the surrounding file already carries comments of that kind.\n", llm.SearchToolName)
 	}
 	if guidance = strings.TrimSpace(guidance); guidance != "" {
 		b.WriteString("\nGuidance from the author, given to this run on the command line. It describes what the generated code has to fit — the API being called, what each parameter means, the units and conventions to use — and it holds for the whole file, not just this slot. Take it as fact about the world the code runs in, and follow it wherever it bears on this slot. It is context, not the instruction: it never says what to write here, and it never loosens the rules above.\n")

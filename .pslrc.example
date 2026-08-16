@@ -11,18 +11,22 @@ default_model=gpt-5.6-luna
 [gpt-5.6]
 base_url=https://api.openai.com
 api_key=
+web_search=on
 
 [gpt-5.6-terra]
 base_url=https://api.openai.com
 api_key=
+web_search=on
 
 [gpt-5.6-luna]
 base_url=https://api.openai.com
 api_key=
+web_search=on
 
 [claude-opus-5]
 base_url=https://api.anthropic.com
 api_key=
+web_search=on
 
 # A section can carry fields straight through to the endpoint. What they mean is
 # the endpoint's business; psl only writes them into the request.
@@ -30,3 +34,12 @@ api_key=
 # base_url=http://127.0.0.1:11434
 # api_key=ollama
 # params={"temperature": 0, "reasoning_effort": "none"}
+
+# web_search=on lets a model look something up while it resolves a slot, for the
+# instructions that turn on a fact psl cannot know — a current version, an API's
+# present signature. The model decides whether to search; searching costs a
+# request of its own. Off unless a section says otherwise.
+# [gpt-5.5]
+# base_url=https://api.openai.com
+# api_key=
+# web_search=on

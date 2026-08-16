@@ -83,7 +83,8 @@ Options:
 
 Configuration lives in .pslrc, looked up in the current directory and then in
 your home directory. It is optional: without it psl uses OPENAI_API_KEY if that
-is set, otherwise ANTHROPIC_API_KEY. See README.md.
+is set, otherwise ANTHROPIC_API_KEY. A model given web_search=on there can look
+a fact up while it resolves a slot. See README.md.
 `
 
 // languageList renders the registered languages as prose: "C, C# and Go".

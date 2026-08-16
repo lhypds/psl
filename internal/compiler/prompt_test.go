@@ -12,7 +12,7 @@ import (
 func TestBuildSystem(t *testing.T) {
 	s := slot.Slot{Instruction: "write a fibonacci function"}
 
-	got := buildSystem("fib.go.psl", golang.Language, s, "", false)
+	got := buildSystem("fib.go.psl", golang.Language, s, "", false, false)
 	for _, want := range []string{"fib.go.psl", "write a fibonacci function", slot.Marker} {
 		if !strings.Contains(got, want) {
 			t.Errorf("system prompt is missing %q:\n%s", want, got)
@@ -25,7 +25,7 @@ func TestBuildSystem(t *testing.T) {
 		t.Error("system prompt announces guidance that was not given")
 	}
 
-	if !strings.Contains(buildSystem("fib.go.psl", golang.Language, s, "", true), "image is attached") {
+	if !strings.Contains(buildSystem("fib.go.psl", golang.Language, s, "", true, false), "image is attached") {
 		t.Error("system prompt should say when an image is attached")
 	}
 }
@@ -34,7 +34,7 @@ func TestBuildSystemGuidance(t *testing.T) {
 	s := slot.Slot{Instruction: "move to the button"}
 	const guidance = "move() takes absolute screen coordinates in pixels"
 
-	got := buildSystem("bot.py.psl", python.Language, s, guidance, false)
+	got := buildSystem("bot.py.psl", python.Language, s, guidance, false, false)
 	if !strings.Contains(got, guidance) {
 		t.Errorf("system prompt is missing the guidance:\n%s", got)
 	}
@@ -48,7 +48,7 @@ func TestBuildSystemGuidance(t *testing.T) {
 	}
 	// Whitespace-only guidance is the same as none: --prompt "" or a file of
 	// blank lines must not announce a briefing that says nothing.
-	if strings.Contains(buildSystem("bot.py.psl", python.Language, s, "  \n\t\n", false), "Guidance from the author") {
+	if strings.Contains(buildSystem("bot.py.psl", python.Language, s, "  \n\t\n", false, false), "Guidance from the author") {
 		t.Error("blank guidance should be treated as no guidance")
 	}
 }

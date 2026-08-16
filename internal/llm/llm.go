@@ -3,6 +3,12 @@
 // There is one wire protocol: OpenAI's chat completions. Every provider psl
 // supports speaks it — Anthropic through its OpenAI-compatible endpoint — so a
 // model differs from another only by base URL, key, and id.
+//
+// Web search holds to the same rule. It is offered as an ordinary function tool
+// and answered here, in [Searcher], rather than through a provider's own hosted
+// search: those disagree on a spelling and on an API, and chat completions
+// takes none of them. Function calling is what every endpoint has in common, so
+// search costs the package a tool loop and no second protocol.
 package llm
 
 import (
@@ -10,6 +16,7 @@ import (
 	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -44,6 +51,10 @@ type Request struct {
 	// Params are the model's `params=` from .pslrc, merged into the body
 	// beside the fields psl builds. See pslrc.Model.Params.
 	Params map[string]any
+	// Search, when set, offers the model a web_search tool and answers the
+	// calls it makes with it. Nil leaves the request without tools, which is
+	// every request from a section that did not set `web_search=`.
+	Search Searcher
 }
 
 // Usage is what the model reported spending on a request.
@@ -53,11 +64,25 @@ type Usage struct {
 	TotalTokens  int
 }
 
+// add accumulates another round's usage. Resolving one slot can take several
+// requests when the model searches, and what the slot cost is all of them.
+func (u *Usage) add(other Usage) {
+	u.InputTokens += other.InputTokens
+	u.OutputTokens += other.OutputTokens
+	u.TotalTokens += other.TotalTokens
+}
+
 // Response is a completed request.
 type Response struct {
 	Text       string
 	StopReason string
 	Usage      Usage
+	// Sources are the pages the answer cited, for endpoints that report them.
+	// A search model fills this in; an ordinary completion leaves it empty.
+	Sources []Source
+	// Searches are the web_search calls made while this request was answered,
+	// in the order they were asked. Empty unless Search was set.
+	Searches []SearchResult
 }
 
 // Client is a chat endpoint.
@@ -154,7 +179,7 @@ func (b *base) post(ctx context.Context, path string, header http.Header, body, 
 				lastErr = err
 				continue
 			}
-			return err
+			return &statusError{code: resp.StatusCode, err: err}
 		}
 		if err := json.Unmarshal(data, out); err != nil {
 			return fmt.Errorf("decode response from %s: %w", url, err)
@@ -162,6 +187,23 @@ func (b *base) post(ctx context.Context, path string, header http.Header, body, 
 		return nil
 	}
 	return lastErr
+}
+
+// statusError is an endpoint refusing a request, as against a network that
+// could not carry one. Only a refusal says something about what was sent, and
+// so only a refusal is worth explaining in psl's own terms.
+type statusError struct {
+	code int
+	err  error
+}
+
+func (e *statusError) Error() string { return e.err.Error() }
+func (e *statusError) Unwrap() error { return e.err }
+
+// refused reports whether err is an endpoint rejecting the request itself.
+func refused(err error) bool {
+	var status *statusError
+	return errors.As(err, &status) && status.code/100 == 4
 }
 
 func snippet(data []byte) string {

@@ -65,6 +65,31 @@ jq 'select(.error) | .request' ~/.psl/psl.log                                 # 
 jq -r '.request.messages[-1].content | if type == "string" then . else .[-1].text end' ~/.psl/psl.log
 ```
 
+A slot the model searched to resolve carries a `searches` array: every query it asked, the answer it
+was given, and the pages that answer rested on. `request` stays the first body, the one that carried
+the file — it is the one with the `web_search` tool in it — and `usage` covers every round the slot
+took, so a searched slot is not counted as costing only its last request.
+
+```json
+"model": { "name": "gpt-5.5", "web_search": "gpt-5-search-api", "…": "…" },
+"searches": [
+  { "query": "current stable Go release version",
+    "answer": "The current stable version of Go is 1.26.5",
+    "sources": ["https://go.dev/doc/devel/release"] }
+]
+```
+
+This is what a generated line rests on, months later, when the value in the file is wrong and the
+question is where it came from:
+
+```shell
+jq -r 'select(.searches) | [.file, .slot.instruction, (.searches[].sources[])] | @tsv' ~/.psl/psl.log
+jq -r 'select(.searches[]?.error) | [.time, .searches[].error] | @tsv' ~/.psl/psl.log   # searches that failed
+```
+
+A search that failed is recorded with its reason rather than dropped: the slot was resolved without
+it, and the log is the only place that shows.
+
 Each entry names the `file` it came from, so one log still separates by project:
 
 ```shell

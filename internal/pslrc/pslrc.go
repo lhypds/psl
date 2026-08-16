@@ -37,6 +37,14 @@ const (
 	EnvAnthropicKey = "ANTHROPIC_API_KEY"
 )
 
+// The model a section reaches the web through when `web_search=on` does not
+// name one. It is a search model: it goes to the web on every request rather
+// than deciding whether to, which is exactly what a tool call already decided.
+const (
+	DefaultSearchModel   = "gpt-5-search-api"
+	DefaultSearchBaseURL = "https://api.openai.com"
+)
+
 // providers describes the model psl falls back to for each API key it finds in
 // the environment, in preference order: OpenAI first, then Anthropic. Each
 // entry names that provider's frontier model — update it as they release.
@@ -61,7 +69,11 @@ type Model struct {
 	// the next one calls its own — so those go over untouched rather than
 	// through a key here for each. Nil when the section sets none.
 	Params map[string]any
-	Origin string // .pslrc path, or "$VAR" when the environment supplied it
+	// WebSearch is `web_search=`: the name of the model that answers this one's
+	// web_search calls. Empty when the section left search off, which is the
+	// default. See Config.ResolveSearch.
+	WebSearch string
+	Origin    string // .pslrc path, or "$VAR" when the environment supplied it
 }
 
 // Config is a parsed .pslrc.
@@ -277,6 +289,12 @@ func (m *Model) set(key, value string) error {
 			return err
 		}
 		m.Params = params
+	case "web_search":
+		search, err := parseWebSearch(value)
+		if err != nil {
+			return err
+		}
+		m.WebSearch = search
 	case "default_model":
 		return fmt.Errorf("default_model must appear before any [model] section")
 	default:
@@ -289,7 +307,39 @@ func (m *Model) set(key, value string) error {
 // `params=` would be a section quietly deciding what the compiler is for — the
 // file it was handed, or how much of an answer it will take — so it is refused
 // where it is written rather than found out from the endpoint's reply.
-var builtParams = []string{"model", "messages", "max_completion_tokens"}
+//
+// `tools` is among them because psl answers the calls a tool produces. A tool
+// psl put there is one it knows how to run; one arriving through params would
+// be offered to the model and then have nothing behind it.
+var builtParams = []string{"model", "messages", "max_completion_tokens", "tools"}
+
+// webSearchOff and webSearchOn are the words a section may write instead of
+// naming a model, since turning search on is the ordinary case and the model
+// behind it is not usually the point.
+var (
+	webSearchOff = []string{"", "off", "false", "no", "0"}
+	webSearchOn  = []string{"on", "true", "yes", "1"}
+)
+
+// parseWebSearch reads `web_search=`. It is a switch that also accepts a model
+// name, so that the endpoint reaching the web can be chosen — a local search
+// model, another provider's — without a second key to configure it with.
+func parseWebSearch(value string) (string, error) {
+	value = strings.TrimSpace(value)
+	switch word := strings.ToLower(value); {
+	case slices.Contains(webSearchOff, word):
+		return "", nil
+	case slices.Contains(webSearchOn, word):
+		return DefaultSearchModel, nil
+	}
+	// Anything else names the model to search with. A section header is what a
+	// model name looks like here, so a value that could not be one is a typo in
+	// the switch rather than a model nobody configured.
+	if strings.ContainsAny(value, " \t") {
+		return "", fmt.Errorf("web_search must be on, off, or the name of a model to search with, got %q", value)
+	}
+	return value, nil
+}
 
 // parseParams reads `params=` — a JSON object, written on one line, whose
 // fields go into the request as they stand.
@@ -342,6 +392,56 @@ func (c *Config) Resolve(name string) (*Model, error) {
 		return nil, fmt.Errorf("model %q has no base_url in %s", name, m.Origin)
 	}
 	return m, nil
+}
+
+// ResolveSearch returns the model that answers m's web_search calls, or nil
+// when m left search off.
+//
+// The default search model needs no section of its own. It is OpenAI's, so the
+// key it wants is one psl can usually already see: the one in the environment,
+// or — when m reaches the same host — the one m is itself configured with. A
+// section that names some other model is looked up like any other, since at
+// that point the author has said which endpoint they mean.
+func (c *Config) ResolveSearch(m *Model) (*Model, error) {
+	if m.WebSearch == "" {
+		return nil, nil
+	}
+	if _, configured := c.Models[m.WebSearch]; configured || m.WebSearch != DefaultSearchModel {
+		search, err := c.Resolve(m.WebSearch)
+		if err != nil {
+			return nil, fmt.Errorf("web_search for model %q: %w", m.Name, err)
+		}
+		return search, nil
+	}
+
+	key, origin := os.Getenv(EnvOpenAIKey), "$"+EnvOpenAIKey
+	if key == "" && sameHost(m.BaseURL, DefaultSearchBaseURL) {
+		key, origin = m.APIKey, m.Origin
+	}
+	if key == "" {
+		return nil, fmt.Errorf("model %q sets web_search=on, which searches with %s; "+
+			"export %s, or give %s a [%s] section in %s",
+			m.Name, DefaultSearchModel, EnvOpenAIKey, DefaultSearchModel, DefaultSearchModel, c.source())
+	}
+	return &Model{
+		Name:    DefaultSearchModel,
+		BaseURL: DefaultSearchBaseURL,
+		APIKey:  key,
+		Origin:  origin,
+	}, nil
+}
+
+// sameHost reports whether two base URLs are the same endpoint, so that a key
+// is only ever reused where it would already have been sent.
+func sameHost(a, b string) bool {
+	host := func(url string) string {
+		if _, rest, ok := strings.Cut(url, "://"); ok {
+			url = rest
+		}
+		url, _, _ = strings.Cut(url, "/")
+		return strings.ToLower(url)
+	}
+	return a != "" && host(a) == host(b)
 }
 
 // source names where the configuration came from, for error messages.

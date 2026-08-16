@@ -42,11 +42,28 @@ type Entry struct {
 	// keeps its own shape: what psl composed is only worth recording as the
 	// thing that was actually sent. Its "messages" hold the prompt, and — for
 	// APIs that carry it there — the system prompt too.
-	Request    json.RawMessage `json:"request"`
-	Response   *Response       `json:"response,omitempty"`
-	Usage      *Usage          `json:"usage,omitempty"`
-	DurationMS int64           `json:"duration_ms"`
-	Error      string          `json:"error,omitempty"`
+	//
+	// A slot the model searched to resolve took more than one request. This is
+	// the first, the one that carried the file; the searches that followed are
+	// under Searches, and Usage is what all of them cost together.
+	Request json.RawMessage `json:"request"`
+	// Searches are the web searches the model made, in the order it asked them.
+	// Absent unless the model's section turned search on.
+	Searches   []Search  `json:"searches,omitempty"`
+	Response   *Response `json:"response,omitempty"`
+	Usage      *Usage    `json:"usage,omitempty"`
+	DurationMS int64     `json:"duration_ms"`
+	Error      string    `json:"error,omitempty"`
+}
+
+// Search is one query the model asked the web while resolving the slot, and the
+// answer it was given. A search that failed is recorded with the reason: the
+// slot was resolved without it, and the log is where that shows.
+type Search struct {
+	Query   string   `json:"query"`
+	Answer  string   `json:"answer,omitempty"`
+	Sources []string `json:"sources,omitempty"`
+	Error   string   `json:"error,omitempty"`
 }
 
 // Slot locates the instruction that was resolved.
@@ -62,6 +79,9 @@ type Model struct {
 	BaseURL   string `json:"base_url"` // never includes credentials
 	Endpoint  string `json:"endpoint"`
 	MaxTokens int    `json:"max_tokens,omitempty"`
+	// WebSearch names the model offered to this one as a web_search tool.
+	// Absent when the section left search off.
+	WebSearch string `json:"web_search,omitempty"`
 }
 
 // Response is what the model returned.
