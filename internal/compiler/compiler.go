@@ -23,7 +23,7 @@ var ErrNoSlots = errors.New("no AI slots left")
 
 // Options configures one compilation run.
 type Options struct {
-	Path    string // file to compile, rewritten in place
+	Path    string // PSL source path; Compile rewrites it, CompileSource uses it as the logical name
 	Config  *pslrc.Config
 	Image   *llm.Image     // optional visual context for this run
 	Prompt  string         // optional guidance from --prompt, added to the system prompt
@@ -43,7 +43,8 @@ type Result struct {
 	Language    string // language the source was parsed under
 	Instruction string
 	Replacement string
-	Remaining   int // slots still unresolved after this run
+	Source      string // complete source after replacing this slot
+	Remaining   int    // slots still unresolved after this run
 	Usage       llm.Usage
 	// Searches are the web searches the model made to resolve the slot, in the
 	// order it asked them. Empty unless the model's section turned search on.
@@ -76,8 +77,32 @@ func Compile(ctx context.Context, opts Options) (*Result, error) {
 	if err != nil {
 		return nil, err
 	}
-	src := string(source)
+	result, err := resolve(ctx, string(source), language, opts)
+	if err != nil {
+		return nil, err
+	}
+	if err := writeFile(opts.Path, result.Source, info.Mode().Perm()); err != nil {
+		return nil, err
+	}
+	return result, nil
+}
 
+// CompileSource resolves the first slot in source without reading or writing a
+// file. opts.Path is still required: its second extension selects the language,
+// and its name and location are recorded in the prompt and log. This is the
+// form used by commands that need to compile a copy while leaving the PSL
+// source untouched.
+func CompileSource(ctx context.Context, source string, opts Options) (*Result, error) {
+	language, _, err := lang.Of(opts.Path)
+	if err != nil {
+		return nil, err
+	}
+	return resolve(ctx, source, language, opts)
+}
+
+// resolve performs the one-slot transformation shared by the in-place and
+// in-memory compiler entry points.
+func resolve(ctx context.Context, src string, language *lang.Language, opts Options) (*Result, error) {
 	s, ok := slot.Find(src, language)
 	if !ok {
 		return nil, ErrNoSlots
@@ -135,14 +160,12 @@ func Compile(ctx context.Context, opts Options) (*Result, error) {
 	}
 
 	compiled := slot.Replace(src, s, replacement)
-	if err := writeFile(opts.Path, compiled, info.Mode().Perm()); err != nil {
-		return nil, err
-	}
 	return &Result{
 		Model:       model.Name,
 		Language:    language.Name,
 		Instruction: s.Instruction,
 		Replacement: replacement,
+		Source:      compiled,
 		Remaining:   slot.Count(compiled, language),
 		Usage:       out.Usage,
 		Searches:    out.Searches,

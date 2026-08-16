@@ -27,6 +27,7 @@ var Language = lang.Register(&lang.Language{
 	Exts:    []string{"cs", "csx"},
 	Comment: lang.CComments,
 	String:  stringLiteral,
+	ExecutionPlan: ExecutionPlan,
 })
 
 // stringLiteral matches "...", @"...", $"...", $@"...", """...""" and 'c'.

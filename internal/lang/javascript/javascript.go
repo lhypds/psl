@@ -30,6 +30,7 @@ var Language = lang.Register(&lang.Language{
 	Exts:    []string{"js", "jsx", "mjs", "cjs"},
 	Comment: lang.CComments,
 	String:  Literal,
+	ExecutionPlan: ExecutionPlan,
 })
 
 // Literal matches a string, a template literal, or a regular expression. It is

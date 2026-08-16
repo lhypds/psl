@@ -3,6 +3,7 @@ package main
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -33,6 +34,15 @@ func TestParseArgs(t *testing.T) {
 		{name: "update command", args: []string{"update"}, want: options{update: true}},
 		{name: "config command", args: []string{"config"}, want: options{config: true}},
 		{name: "usage command", args: []string{"usage"}, want: options{usage: true}},
+		{name: "run command", args: []string{"run", "app.py.psl"}, want: options{run: true, path: "app.py.psl"}},
+		{name: "run flags", args: []string{"run", "--prompt", "pixels", "app.py.psl"}, want: options{run: true, path: "app.py.psl", prompt: "pixels"}},
+		{name: "run program arguments", args: []string{"run", "app.py.psl", "--", "--name", "Ada"}, want: options{run: true, path: "app.py.psl", programArgs: []string{"--name", "Ada"}}},
+		{name: "run without a file", args: []string{"run"}, isErr: true},
+		{name: "run separator before file", args: []string{"run", "--", "app.py.psl"}, isErr: true},
+		{name: "resolve command", args: []string{"resolve", ":: say hello ::"}, want: options{resolve: true, instruction: ":: say hello ::"}},
+		{name: "resolve flags", args: []string{"resolve", ":: say hello ::", "--prompt", "brief"}, want: options{resolve: true, instruction: ":: say hello ::", prompt: "brief"}},
+		{name: "resolve without a slot", args: []string{"resolve"}, isErr: true},
+		{name: "resolve with two slots", args: []string{"resolve", ":: one ::", ":: two ::"}, isErr: true},
 		{name: "no file", args: nil, isErr: true},
 		{name: "two files", args: []string{"a.psl", "b.psl"}, isErr: true},
 		{name: "update takes no arguments", args: []string{"update", "a.psl"}, isErr: true},
@@ -63,7 +73,7 @@ func TestParseArgs(t *testing.T) {
 			if err != nil {
 				t.Fatalf("parseArgs(%q) error: %v", tc.args, err)
 			}
-			if got != tc.want {
+			if !reflect.DeepEqual(got, tc.want) {
 				t.Errorf("parseArgs(%q) = %+v, want %+v", tc.args, got, tc.want)
 			}
 		})

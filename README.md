@@ -74,7 +74,20 @@ lib.rs.psl        Rust
 app.ts.psl        TypeScript
 ```
 
-The extension in the middle is not decoration. `::` means something in most languages already, and which `::` are slots and which are the language's own syntax depends entirely on which language it is — so psl refuses a file that does not say. It has a folder of rules for C, C#, Go, JavaScript, Python, Rust, TypeScript and Pob's Macro PSL; any other extension compiles under the generic rules, with a warning saying so.
+The extension in the middle is not decoration. `::` means something in most languages already, and which `::` are slots and which are the language's own syntax depends entirely on which language it is — so psl refuses a file that does not say. These are the languages it has rules for:
+
+| Language | Extensions | Example |
+| --- | --- | --- |
+| C | `.c` `.h` | `main.c.psl` |
+| C# | `.cs` `.csx` | `Program.cs.psl` |
+| Go | `.go` | `fib.go.psl` |
+| JavaScript | `.js` `.jsx` `.mjs` `.cjs` | `app.js.psl` |
+| Python | `.py` `.pyi` `.pyw` | `bot.py.psl` |
+| Rust | `.rs` | `lib.rs.psl` |
+| TypeScript | `.ts` `.tsx` `.mts` `.cts` | `app.ts.psl` |
+| Pob's Macro PSL | `.macro` | `login.macro.psl` |
+
+Any other extension compiles under the generic rules, with a warning saying so.
 
 AI Slots
 
@@ -121,11 +134,67 @@ PSL Compiler
 psl <file.psl>
 ```
 
-Each run processes exactly one AI slot:  
+Each compiler invocation processes exactly one AI slot:
 
 The compiler scans the file for the first remaining `:: xxx ::` slot, generates its output, and writes the result back into the original file in place of the slot.  
 
 Run the compiler repeatedly to resolve the rest — one slot per run, until no slots remain.  
+
+
+Running a PSL File
+------------------
+
+`psl run` translates the PSL source into the file its language can execute,
+writes that file beside the PSL source, and invokes the language's executor:
+
+```shell
+psl run bot.py.psl
+```
+
+This leaves `bot.py.psl` untouched, writes `bot.py`, and runs it with Python.
+
+Python slots are runtime expressions. The generated `bot.py` asks psl for a
+new value whenever Python executes the expression, so a slot inside a loop is
+resolved once per iteration:
+
+```python
+for i in range(3):
+    print(f":: give me a new greeting for iteration {i} ::")
+```
+
+A Python runtime slot may be used directly as an expression or as the entire
+contents of a string literal. A slot mixed with other string text, or placed in
+a comment, is rejected because it cannot be turned into a value expression
+without changing the program's meaning. Use an f-string when the instruction
+needs surrounding text or current Python values.
+
+The plain compiler command retains compile-time semantics: `psl bot.py.psl`
+resolves one slot and freezes its result into the source file. Other languages
+currently use those compile-time semantics under `psl run` as well; Python is
+the first runtime translator.
+
+Arguments after `--` belong to the generated program rather than to psl:
+
+```shell
+psl run bot.py.psl -- --name Ada
+```
+
+`--image` and `--prompt` remain psl options and are supplied to every runtime
+resolution:
+
+```shell
+psl run bot.py.psl --prompt api.md -- input.txt
+```
+
+The second extension chooses both the language rules and the executor. Python
+first uses the active virtual environment, then the nearest project `.venv`,
+and finally `python3` or `python` from PATH. JavaScript uses `node`; TypeScript
+and JSX use the first available of `tsx`, `bun`, or `deno`; Go uses `go run`;
+C and Rust are compiled to a temporary binary with `cc`/`clang`/`gcc` or
+`rustc`; `.cs` uses a .NET SDK with file-based app support; and `.csx` uses
+`dotnet-script`. The generated source remains beside the PSL file after the
+program exits. Macro PSL and unknown extensions have no automatic executor and
+are rejected by `psl run`.
 
 Including an Image
 

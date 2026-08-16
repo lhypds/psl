@@ -5,7 +5,19 @@ import (
 	"strings"
 	"unicode"
 	"unicode/utf8"
+
+	"psl/internal/executor"
 )
+
+// RuntimeOptions is the language-independent context a runtime source
+// translator may capture in generated calls.
+type RuntimeOptions struct {
+	Path           string
+	Executable     string
+	Prompt         string
+	ImageMediaType string
+	ImageBase64    string
+}
 
 // Language is one language's answer to two questions: which parts of a source
 // file psl must not read a delimiter out of, and which `::` in it are the
@@ -39,6 +51,14 @@ type Language struct {
 	// state what is peculiar to it.
 	Opens  func(sx *Syntax, i int) bool
 	Closes func(sx *Syntax, i int) bool
+
+	// TranslateRuntime converts source slots into calls made when the generated
+	// program reaches them. Nil means this language keeps compile-time slots.
+	TranslateRuntime func(source string, opts RuntimeOptions) (string, int, error)
+
+	// ExecutionPlan chooses how psl run executes the generated language file.
+	// Nil means the language has no conventional executor.
+	ExecutionPlan func(ext, source string, programArgs []string, lookPath executor.LookPath) (executor.Plan, error)
 }
 
 // Syntax is one source file read under one language's rules: where its
@@ -53,7 +73,17 @@ type Syntax struct {
 
 // region is one comment or one literal: a run of the file a slot may not
 // straddle.
-type region struct{ start, end int }
+type region struct {
+	start, end int
+	kind       regionKind
+}
+
+type regionKind byte
+
+const (
+	commentRegion regionKind = iota
+	stringRegion
+)
 
 // Analyze reads src once under l's rules. A nil language reads it under
 // Generic, which is the same as not reading it at all.
@@ -67,14 +97,14 @@ func (l *Language) Analyze(src string) *Syntax {
 	}
 	depth := 0
 	for i := 0; i < len(src); {
-		if end, ok := l.region(src, i); ok {
-			sx.regions = append(sx.regions, region{i, end})
+		if r, ok := l.region(src, i); ok {
+			sx.regions = append(sx.regions, r)
 			if sx.bracket != nil {
-				for j := i; j < end; j++ {
+				for j := i; j < r.end; j++ {
 					sx.bracket[j] = depth > 0
 				}
 			}
-			i = end
+			i = r.end
 			continue
 		}
 		if sx.bracket != nil {
@@ -96,18 +126,18 @@ func (l *Language) Analyze(src string) *Syntax {
 // region matches the comment or literal starting at i. Comments are tried
 // first: a quote inside a comment starts nothing, and neither does a comment
 // marker inside a string.
-func (l *Language) region(src string, i int) (int, bool) {
+func (l *Language) region(src string, i int) (region, bool) {
 	if l.Comment != nil {
 		if end, ok := l.Comment(src, i); ok && end > i {
-			return end, true
+			return region{start: i, end: end, kind: commentRegion}, true
 		}
 	}
 	if l.String != nil {
 		if end, ok := l.String(src, i); ok && end > i {
-			return end, true
+			return region{start: i, end: end, kind: stringRegion}, true
 		}
 	}
-	return 0, false
+	return region{}, false
 }
 
 // Source is the file Analyze read.
@@ -146,6 +176,23 @@ func (sx *Syntax) InBrackets(i int) bool {
 	return sx.bracket != nil && i < len(sx.bracket) && sx.bracket[i]
 }
 
+// StringAt reports the bounds of the string literal containing i. It is used
+// by source translators that need to replace a slot together with the literal
+// quotes around it. The bounds include any literal prefix and its fences.
+func (sx *Syntax) StringAt(i int) (start, end int, ok bool) {
+	r, ok := sx.regionHolding(i)
+	if !ok || r.kind != stringRegion {
+		return 0, 0, false
+	}
+	return r.start, r.end, true
+}
+
+// InComment reports whether i is inside a comment.
+func (sx *Syntax) InComment(i int) bool {
+	r, ok := sx.regionHolding(i)
+	return ok && r.kind == commentRegion
+}
+
 // regionAt returns the index of the comment or literal holding i, and -1 when
 // i is in code. Two offsets are in the same context when this agrees on them.
 func (sx *Syntax) regionAt(i int) int {
@@ -154,6 +201,14 @@ func (sx *Syntax) regionAt(i int) int {
 		return n
 	}
 	return -1
+}
+
+func (sx *Syntax) regionHolding(i int) (region, bool) {
+	n := sx.regionAt(i)
+	if n < 0 {
+		return region{}, false
+	}
+	return sx.regions[n], true
 }
 
 // The helpers below are the pieces a language folder is built out of. They all

@@ -24,6 +24,7 @@ var Language = lang.Register(&lang.Language{
 	Exts:    []string{"go"},
 	Comment: lang.CComments,
 	String:  stringLiteral,
+	ExecutionPlan: ExecutionPlan,
 })
 
 // stringLiteral matches an interpreted string, a raw string, or a rune literal.

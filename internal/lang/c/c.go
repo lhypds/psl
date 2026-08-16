@@ -27,6 +27,7 @@ var Language = lang.Register(&lang.Language{
 	Exts:    []string{"c", "h"},
 	Comment: lang.CComments,
 	String:  stringLiteral,
+	ExecutionPlan: ExecutionPlan,
 })
 
 // stringLiteral matches a string or character literal, including the encoding

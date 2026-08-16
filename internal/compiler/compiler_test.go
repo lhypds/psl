@@ -197,6 +197,27 @@ func TestCompileNoSlots(t *testing.T) {
 	}
 }
 
+func TestCompileSourceDoesNotRewriteTheInputFile(t *testing.T) {
+	const source = "package main\n\n:: write main ::\n"
+	path := writeSource(t, source)
+	client := &fakeClient{reply: "func main() {}"}
+
+	result, err := CompileSource(context.Background(), source, Options{
+		Path:      path,
+		Config:    testConfig(t),
+		NewClient: func(*pslrc.Model) llm.Client { return client },
+	})
+	if err != nil {
+		t.Fatalf("CompileSource() error: %v", err)
+	}
+	if got, want := result.Source, "package main\n\nfunc main() {}\n"; got != want {
+		t.Errorf("Source = %q, want %q", got, want)
+	}
+	if got := read(t, path); got != source {
+		t.Errorf("input file = %q, want it untouched", got)
+	}
+}
+
 func TestCompileLeavesFileUntouchedOnError(t *testing.T) {
 	source := ":: mystery-model> hi ::\n"
 

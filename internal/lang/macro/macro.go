@@ -35,6 +35,7 @@ var Language = lang.Register(&lang.Language{
 	Exts:    []string{"macro"},
 	Comment: lang.CComments,
 	String:  stringLiteral,
+	ExecutionPlan: ExecutionPlan,
 })
 
 // stringLiteral matches the double-quoted string, the only literal the language

@@ -36,6 +36,8 @@ var Language = lang.Register(&lang.Language{
 	Brackets: true,
 	Opens:    opens,
 	Closes:   closes,
+	TranslateRuntime: TranslateRuntime,
+	ExecutionPlan:    ExecutionPlan,
 })
 
 func comment(src string, i int) (int, bool) {

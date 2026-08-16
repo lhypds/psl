@@ -41,6 +41,20 @@ func Find(src string, l *lang.Language) (Slot, bool) {
 	return find(l.Analyze(src), 0)
 }
 
+// All returns every slot in src in source order.
+func All(src string, l *lang.Language) []Slot {
+	sx := l.Analyze(src)
+	var slots []Slot
+	for from := 0; ; {
+		s, ok := find(sx, from)
+		if !ok {
+			return slots
+		}
+		slots = append(slots, s)
+		from = s.End
+	}
+}
+
 // Count reports how many slots src holds.
 func Count(src string, l *lang.Language) int {
 	sx := l.Analyze(src)

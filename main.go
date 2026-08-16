@@ -52,13 +52,19 @@ const usageTemplate = `psl — Prompt Script Language compiler
 
 Usage:
   psl <file.psl> [--image <base64_image>] [--prompt <text>]
+  psl run <file.psl> [--image <base64_image>] [--prompt <text>] [-- <args>...]
   psl config
   psl usage
   psl update
 
-Each run resolves exactly one AI slot: psl finds the first remaining
-:: instruction :: in the file, generates its output, and writes the result
-back over the slot. Run psl again for the next slot.
+A plain psl <file.psl> invocation resolves exactly one AI slot: psl finds the
+first remaining :: instruction ::, generates its output, and writes the result
+back over the slot. Invoke it again for the next slot.
+
+psl run translates without changing the input, writes the generated language
+file beside it without the trailing .psl, then invokes that language's executor.
+Python slots resolve whenever execution reaches them. Arguments after -- are
+passed to the generated program.
 
 A PSL file is named <name>.<language>.psl — main.py.psl, Program.cs.psl,
 fib.go.psl. The extension before .psl says which language's own syntax psl
@@ -68,12 +74,13 @@ under the generic rules.
 Languages: %s.
 
 Commands:
+  run <file.psl>        translate, write <file>, and execute it
   config               edit .pslrc in $VISUAL, $EDITOR, or vim
   usage                tokens spent per model, totalled from ~/.psl/psl.log
   update               replace this executable with the latest GitHub release
 
 Options:
-  -i, --image <data>   image given to the slot resolved on this run;
+  -i, --image <data>   image given to the slot(s) resolved by this invocation;
                        accepts a file path, a data: URL, or raw base64
   -p, --prompt <text>  guidance added to the system prompt: the API the code
                        has to fit, what each parameter means, in what units;
@@ -165,14 +172,42 @@ func run(args []string) int {
 		fmt.Fprintf(os.Stderr, "psl: warning: %v\n", err)
 	}
 
-	result, err := compiler.Compile(ctx, compiler.Options{
+	compileOpts := compiler.Options{
 		Path:    opts.path,
 		Config:  cfg,
 		Image:   image,
 		Prompt:  prompt,
 		Log:     logger,
 		Version: strings.TrimSpace(versionFile),
-	})
+	}
+	if opts.resolve {
+		compileOpts.Path = "runtime.txt.psl"
+		result, err := compiler.CompileSource(ctx, opts.instruction, compileOpts)
+		if errors.Is(err, compiler.ErrNoSlots) {
+			fmt.Fprintln(os.Stderr, "psl: resolve needs one complete :: instruction :: slot")
+			return 2
+		}
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "psl: %v\n", err)
+			return 1
+		}
+		if result.Remaining != 0 {
+			fmt.Fprintln(os.Stderr, "psl: resolve accepts exactly one AI slot")
+			return 2
+		}
+		fmt.Fprint(os.Stdout, result.Source)
+		return 0
+	}
+	if opts.run {
+		code, err := runCompiled(ctx, compileOpts, opts.programArgs, os.Stdin, os.Stdout, os.Stderr)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "psl: %v\n", err)
+			return 1
+		}
+		return code
+	}
+
+	result, err := compiler.Compile(ctx, compileOpts)
 	if errors.Is(err, compiler.ErrNoSlots) {
 		fmt.Fprintf(os.Stderr, "psl: %s has no AI slots left\n", opts.path)
 		return 0
@@ -182,8 +217,7 @@ func run(args []string) int {
 		return 1
 	}
 
-	fmt.Fprintf(os.Stderr, "psl: %s resolved with %s%s — %s\n",
-		opts.path, result.Model, tokens(result.Usage), summarize(result.Instruction))
+	printResolved(os.Stderr, opts.path, result)
 	if result.Remaining > 0 {
 		fmt.Fprintf(os.Stderr, "psl: %d slot(s) remaining, run psl again\n", result.Remaining)
 	} else {
@@ -343,14 +377,18 @@ func period(total psllog.Totals) string {
 }
 
 type options struct {
-	path    string
-	image   string
-	prompt  string
-	config  bool
-	usage   bool
-	update  bool
-	help    bool
-	version bool
+	path        string
+	image       string
+	prompt      string
+	programArgs []string
+	run         bool
+	resolve     bool
+	instruction string
+	config      bool
+	usage       bool
+	update      bool
+	help        bool
+	version     bool
 }
 
 // parseArgs accepts flags before or after the file argument, since the README
@@ -360,6 +398,12 @@ func parseArgs(args []string) (options, error) {
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
 		switch {
+		case arg == "--" && opts.run:
+			if opts.path == "" {
+				return opts, errors.New("run needs an input file before --")
+			}
+			opts.programArgs = append(opts.programArgs, args[i+1:]...)
+			i = len(args)
 		case arg == "-h" || arg == "--help":
 			opts.help = true
 			return opts, nil
@@ -392,6 +436,10 @@ func parseArgs(args []string) (options, error) {
 			opts.config = true
 		case arg == "usage" && i == 0:
 			opts.usage = true
+		case arg == "run" && i == 0:
+			opts.run = true
+		case arg == "resolve" && i == 0:
+			opts.resolve = true
 		default:
 			if opts.update {
 				return opts, fmt.Errorf("update takes no arguments, got %q", arg)
@@ -402,13 +450,26 @@ func parseArgs(args []string) (options, error) {
 			if opts.usage {
 				return opts, fmt.Errorf("usage takes no arguments, got %q", arg)
 			}
+			if opts.resolve {
+				if opts.instruction != "" {
+					return opts, fmt.Errorf("resolve accepts one AI slot, got %q and %q", opts.instruction, arg)
+				}
+				opts.instruction = arg
+				continue
+			}
 			if opts.path != "" {
 				return opts, fmt.Errorf("psl compiles one file per run, got %q and %q", opts.path, arg)
 			}
 			opts.path = arg
 		}
 	}
-	if opts.path == "" && !opts.update && !opts.config && !opts.usage {
+	if opts.run && opts.path == "" {
+		return opts, errors.New("run needs an input file")
+	}
+	if opts.resolve && opts.instruction == "" {
+		return opts, errors.New("resolve needs one AI slot")
+	}
+	if opts.path == "" && !opts.update && !opts.config && !opts.usage && !opts.resolve {
 		return opts, errors.New("no input file")
 	}
 	return opts, nil
@@ -443,6 +504,11 @@ func tokens(u llm.Usage) string {
 		return ""
 	}
 	return fmt.Sprintf(" (%d tokens: %d in, %d out)", u.TotalTokens, u.InputTokens, u.OutputTokens)
+}
+
+func printResolved(out io.Writer, path string, result *compiler.Result) {
+	fmt.Fprintf(out, "psl: %s resolved with %s%s — %s\n",
+		path, result.Model, tokens(result.Usage), summarize(result.Instruction))
 }
 
 func summarize(instruction string) string {

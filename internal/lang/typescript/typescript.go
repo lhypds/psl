@@ -24,4 +24,5 @@ var Language = lang.Register(&lang.Language{
 	Exts:    []string{"ts", "tsx", "mts", "cts"},
 	Comment: lang.CComments,
 	String:  javascript.Literal,
+	ExecutionPlan: ExecutionPlan,
 })

@@ -38,6 +38,7 @@ var Language = lang.Register(&lang.Language{
 	String:  stringLiteral,
 	Opens:   opens,
 	Closes:  closes,
+	ExecutionPlan: ExecutionPlan,
 })
 
 // comment is the C pair, except that Rust's block comments nest.
