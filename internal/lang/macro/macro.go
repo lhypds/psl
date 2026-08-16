@@ -31,10 +31,10 @@ import "psl/internal/lang"
 
 // Language is Macro PSL: the C comment pair, and the one string it writes.
 var Language = lang.Register(&lang.Language{
-	Name:    "Macro PSL",
-	Exts:    []string{"macro"},
-	Comment: lang.CComments,
-	String:  stringLiteral,
+	Name:          "Macro PSL",
+	Exts:          []string{"macro"},
+	Comment:       lang.CComments,
+	String:        stringLiteral,
 	ExecutionPlan: ExecutionPlan,
 })
 

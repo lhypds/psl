@@ -26,10 +26,10 @@ import (
 // Language is JavaScript: the C comment pair, and every literal a slash, a
 // quote or a backtick can open.
 var Language = lang.Register(&lang.Language{
-	Name:    "JavaScript",
-	Exts:    []string{"js", "jsx", "mjs", "cjs"},
-	Comment: lang.CComments,
-	String:  Literal,
+	Name:          "JavaScript",
+	Exts:          []string{"js", "jsx", "mjs", "cjs"},
+	Comment:       lang.CComments,
+	String:        Literal,
 	ExecutionPlan: ExecutionPlan,
 })
 

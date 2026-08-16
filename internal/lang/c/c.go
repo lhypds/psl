@@ -23,10 +23,10 @@ import (
 // Language is C: the C comment pair, and C's literals with their encoding
 // prefixes.
 var Language = lang.Register(&lang.Language{
-	Name:    "C",
-	Exts:    []string{"c", "h"},
-	Comment: lang.CComments,
-	String:  stringLiteral,
+	Name:          "C",
+	Exts:          []string{"c", "h"},
+	Comment:       lang.CComments,
+	String:        stringLiteral,
 	ExecutionPlan: ExecutionPlan,
 })
 

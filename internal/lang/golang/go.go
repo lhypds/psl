@@ -20,10 +20,10 @@ import "psl/internal/lang"
 
 // Language is Go: the C comment pair, and Go's three kinds of literal.
 var Language = lang.Register(&lang.Language{
-	Name:    "Go",
-	Exts:    []string{"go"},
-	Comment: lang.CComments,
-	String:  stringLiteral,
+	Name:          "Go",
+	Exts:          []string{"go"},
+	Comment:       lang.CComments,
+	String:        stringLiteral,
 	ExecutionPlan: ExecutionPlan,
 })
 

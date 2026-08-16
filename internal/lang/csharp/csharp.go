@@ -23,10 +23,10 @@ import (
 
 // Language is C#: the C comment pair, and every way C# spells a string.
 var Language = lang.Register(&lang.Language{
-	Name:    "C#",
-	Exts:    []string{"cs", "csx"},
-	Comment: lang.CComments,
-	String:  stringLiteral,
+	Name:          "C#",
+	Exts:          []string{"cs", "csx"},
+	Comment:       lang.CComments,
+	String:        stringLiteral,
 	ExecutionPlan: ExecutionPlan,
 })
 

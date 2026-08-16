@@ -20,9 +20,9 @@ import (
 // Language is TypeScript: JavaScript's rules, claimed under TypeScript's
 // extensions and TypeScript's name.
 var Language = lang.Register(&lang.Language{
-	Name:    "TypeScript",
-	Exts:    []string{"ts", "tsx", "mts", "cts"},
-	Comment: lang.CComments,
-	String:  javascript.Literal,
+	Name:          "TypeScript",
+	Exts:          []string{"ts", "tsx", "mts", "cts"},
+	Comment:       lang.CComments,
+	String:        javascript.Literal,
 	ExecutionPlan: ExecutionPlan,
 })

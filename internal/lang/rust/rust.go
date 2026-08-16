@@ -32,12 +32,12 @@ import (
 // Language is Rust: nested block comments, raw strings fenced with hashes, and
 // the two guards a path needs.
 var Language = lang.Register(&lang.Language{
-	Name:    "Rust",
-	Exts:    []string{"rs"},
-	Comment: comment,
-	String:  stringLiteral,
-	Opens:   opens,
-	Closes:  closes,
+	Name:          "Rust",
+	Exts:          []string{"rs"},
+	Comment:       comment,
+	String:        stringLiteral,
+	Opens:         opens,
+	Closes:        closes,
 	ExecutionPlan: ExecutionPlan,
 })
 

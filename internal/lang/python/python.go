@@ -29,13 +29,13 @@ import (
 // Language is Python: the # comment, every prefix and fence a string can carry,
 // and the two guards a slice needs.
 var Language = lang.Register(&lang.Language{
-	Name:     "Python",
-	Exts:     []string{"py", "pyi", "pyw"},
-	Comment:  comment,
-	String:   stringLiteral,
-	Brackets: true,
-	Opens:    opens,
-	Closes:   closes,
+	Name:             "Python",
+	Exts:             []string{"py", "pyi", "pyw"},
+	Comment:          comment,
+	String:           stringLiteral,
+	Brackets:         true,
+	Opens:            opens,
+	Closes:           closes,
 	TranslateRuntime: TranslateRuntime,
 	ExecutionPlan:    ExecutionPlan,
 })
