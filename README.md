@@ -5,20 +5,11 @@ psl
 
 Prompt Script Language (PSL) is an AI native language that lets you embed AI instructions in files written in other languages.
 
-- [Install](#install) — one command per platform, and `psl update` afterwards
-- [Syntax](#syntax) — file names, AI slots, and choosing a model
-- [Commands](#commands) - `psl` commands
-- [PSL Compiler](#psl-compiler) — `psl <file.psl>`, one slot resolved per run and frozen into the file
-- [PSL Runtime](#psl-runtime) — `psl run`, slots resolved as the program executes
-- [.pslrc](#pslrc) — models, API keys, and web search
-- [Documentation](#documentation) — the longer references
-- [License](#license)
 
+Setup
+-----
 
-Install
--------
-
-macOS and Linux:
+macOS and Linux:  
 
 ```shell
 curl -fsSL https://raw.githubusercontent.com/lhypds/psl/main/get.sh | sh
@@ -30,71 +21,13 @@ Windows, in PowerShell:
 irm https://raw.githubusercontent.com/lhypds/psl/main/get.ps1 | iex
 ```
 
-Windows, in cmd.exe:
+Windows, in cmd.exe:  
 
 ```bat
 powershell -NoProfile -Command "irm https://raw.githubusercontent.com/lhypds/psl/main/get.ps1 | iex"
 ```
 
-Either installer downloads the binary built for your platform from the latest release, checks it against the release's `SHA256SUMS` — a release it cannot verify is never installed — and puts it on your PATH. No Go toolchain is involved.
-
-[get.sh](get.sh) puts psl in `/usr/local/bin` when you can write there, and `$HOME/.local/bin` otherwise. To choose for yourself, pass the options through the pipe:
-
-```shell
-curl -fsSL https://raw.githubusercontent.com/lhypds/psl/main/get.sh | sh -s -- --prefix "$HOME/.local"
-curl -fsSL https://raw.githubusercontent.com/lhypds/psl/main/get.sh | sudo sh   # system-wide
-```
-
-[get.ps1](get.ps1) installs into `%LOCALAPPDATA%\Programs\psl` and adds it to your user PATH, so no administrator rights are needed — open a new terminal afterwards for `psl` to be found. Options need the script block spelled out, since a pipe has nowhere to put them:
-
-```powershell
-&([scriptblock]::Create((irm https://raw.githubusercontent.com/lhypds/psl/main/get.ps1))) -InstallDir C:\tools\psl
-```
-
-Both take `PSL_VERSION` to install a particular release, and `psl update` keeps it current afterwards. To build psl from source instead, see [Development](docs/03_Development.md).
-
-
-Commands
---------
-
-Editing the Configuration
-
-```shell
-psl config
-```
-
-This opens the `.pslrc` psl would read here — the one in the current directory, or the one in your home directory — in `$VISUAL`, `$EDITOR`, or whichever of `vim`, `vi` and `nano` is installed. With no `.pslrc` anywhere yet, it writes the shipped example to `~/.pslrc` first, so the editor opens a file with the sections already in it and the keys left blank. When you close the editor the file is parsed, and a typo is reported there and then rather than on the next compile.
-
-Checking What Has Been Spent
-
-```shell
-psl usage
-```
-
-Every request psl makes is recorded in `~/.psl/psl.log`; `psl usage` adds it up and prints what each model has spent, heaviest first:
-
-```shell
-$ psl usage
-MODEL          REQUESTS  INPUT  OUTPUT  TOTAL
-claude-opus-5        12  14203    1872  16075
-gpt-5.6               3   2110     405   2515
-TOTAL                15  16313    2277  18590
-psl: /Users/you/.psl/psl.log (2026-08-10 to 2026-08-13)
-```
-
-The table goes to stdout and everything else to stderr, so it pipes into `column`, `awk` or a spreadsheet as it stands. An `ERRORS` column appears alongside `REQUESTS` once some request has failed — a failed request spends nothing, so it counts as a request without moving the tokens. The totals cover the whole log, which is never rotated: to count a shorter period, or to group by anything other than the model, read the log with `jq` — see [Logging](docs/01_Logging.md).
-
-Updating
-
-However psl was installed, it updates itself from the GitHub releases:
-
-```shell
-psl update
-```
-
-It downloads the release built for your platform, checks it against the release's `SHA256SUMS` — a release it cannot verify is never installed — and swaps it in for the running executable. The old binary is only replaced once the new one is on disk and verified, so a failed update leaves the working psl in place. If psl lives somewhere that needs root, run `sudo psl update`.
-
-`psl config`, `psl usage` and `psl update` are the three arguments that are not file names — `config` edits your configuration, `usage` reports what has been spent, `update` upgrades psl itself, see Install. A file genuinely called `update` still compiles as `psl ./update`.
+Setup `.pslrc`. See [.pslrc](docs/02_pslrc.md) for details.  
 
 
 Syntax
@@ -135,7 +68,7 @@ Specifying a Model
 By default, `:: xxx ::` uses the default model. To specify a model, add its name before the instruction:
 
 ```text
-:: gpt-5.6> xxx ::
+:: gpt-5.6-luna> xxx ::
 ```
 
 
@@ -280,20 +213,9 @@ C and Rust are compiled to a temporary binary with `cc`/`clang`/`gcc` or
 program exits. Macro PSL and unknown extensions have no automatic executor and
 are rejected by `psl run`.
 
-File Names
+Languages  
 
-A PSL file is named after the language it is written in, with `.psl` on the end:
-
-```text
-fib.go.psl        Go
-bot.py.psl        Python
-Program.cs.psl    C#
-main.c.psl        C
-lib.rs.psl        Rust
-app.ts.psl        TypeScript
-```
-
-The extension in the middle is not decoration. `::` means something in most languages already, and which `::` are slots and which are the language's own syntax depends entirely on which language it is — so psl refuses a file that does not say. These are the languages it has rules for:
+A PSL file is named after the language it is written in, with `.psl` on the end.  
 
 | Language | Extensions | Example |
 | --- | --- | --- |
@@ -309,43 +231,15 @@ The extension in the middle is not decoration. `::` means something in most lang
 Any other extension compiles under the generic rules, with a warning saying so.
 
 
-.pslrc
-------
-
-`.pslrc` is where the models live — the API keys, the base URLs, and the
-options each model is given. psl reads the one in the current directory, or
-the one in your home directory. See [.pslrc](docs/02_pslrc.md) for the whole
-of it.
-
-Searching the Web
-
-A slot is resolved once, now, and the answer is frozen into the file. When the instruction turns on a fact that psl cannot know and the model may remember wrongly — the current release of something, an API as it stands today — let the model go and look. Turn it on for a model in `.pslrc`:
-
-```text
-[gpt-5.5]
-base_url=https://api.openai.com
-api_key=<your_openai_api_key>
-web_search=on
-```
-
-The model decides whether a slot needs a search; `:: fill in the iterative loop ::` is written straight out without one. Searching is off unless a section asks for it, so psl never quietly goes to the network on your money. Every query and the pages it turned up are recorded in the log, which is where a generated value can be traced back to months later.
-
-psl offers the model a `web_search` function tool and answers the calls itself, rather than reaching for a provider's own hosted search — function calling is the one way of doing this that every endpoint psl speaks to understands. The searching is done by a search model, `gpt-5-search-api` by default and any section you name instead.
-
-One thing is worth knowing before turning it on: some models, OpenAI's `gpt-5.6` family among them, will not take a function tool while they are reasoning. psl turns reasoning off wherever it offers the tool, so `web_search=on` works on them — which means a model with search on does not reason on any of its slots. Since a slot picks its own model, the usual arrangement is to leave the default model alone and give search to a second section, written into the slots that need it:
-
-```text
-:: gpt-5.5> the current stable Go release, as a quoted version string ::
-```
-
-
 Documentation
 -------------
 
+- [Installation](docs/00_Insttallation.md) — installing and updating psl
 - [Logging](docs/01_Logging.md) — every AI request recorded in `~/.psl/psl.log`
 - [.pslrc](docs/02_pslrc.md) — API keys and models, and what psl does without a `.pslrc`
 - [Development](docs/03_Development.md) — building, testing and releasing psl
 - [Languages](docs/04_Languages.md) — what each language avoids, and how to add one
+- [Commands](docs/05_Commands.md) — editing configuration, checking usage and updating psl
 
 
 License
