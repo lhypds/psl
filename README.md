@@ -5,6 +5,15 @@ psl
 
 Prompt Script Language (PSL) is an AI native language that lets you embed AI instructions in files written in other languages.
 
+- [Install](#install) — one command per platform, and `psl update` afterwards
+- [Syntax](#syntax) — file names, AI slots, and choosing a model
+- [Commands](#commands) - `psl` commands
+- [PSL Compiler](#psl-compiler) — `psl <file.psl>`, one slot resolved per run and frozen into the file
+- [PSL Runtime](#psl-runtime) — `psl run`, slots resolved as the program executes
+- [.pslrc](#pslrc) — models, API keys, and web search
+- [Documentation](#documentation) — the longer references
+- [License](#license)
+
 
 Install
 -------
@@ -45,6 +54,36 @@ curl -fsSL https://raw.githubusercontent.com/lhypds/psl/main/get.sh | sudo sh   
 Both take `PSL_VERSION` to install a particular release, and `psl update` keeps it current afterwards. To build psl from source instead, see [Development](docs/03_Development.md).
 
 
+Commands
+--------
+
+Editing the Configuration
+
+```shell
+psl config
+```
+
+This opens the `.pslrc` psl would read here — the one in the current directory, or the one in your home directory — in `$VISUAL`, `$EDITOR`, or whichever of `vim`, `vi` and `nano` is installed. With no `.pslrc` anywhere yet, it writes the shipped example to `~/.pslrc` first, so the editor opens a file with the sections already in it and the keys left blank. When you close the editor the file is parsed, and a typo is reported there and then rather than on the next compile.
+
+Checking What Has Been Spent
+
+```shell
+psl usage
+```
+
+Every request psl makes is recorded in `~/.psl/psl.log`; `psl usage` adds it up and prints what each model has spent, heaviest first:
+
+```shell
+$ psl usage
+MODEL          REQUESTS  INPUT  OUTPUT  TOTAL
+claude-opus-5        12  14203    1872  16075
+gpt-5.6               3   2110     405   2515
+TOTAL                15  16313    2277  18590
+psl: /Users/you/.psl/psl.log (2026-08-10 to 2026-08-13)
+```
+
+The table goes to stdout and everything else to stderr, so it pipes into `column`, `awk` or a spreadsheet as it stands. An `ERRORS` column appears alongside `REQUESTS` once some request has failed — a failed request spends nothing, so it counts as a request without moving the tokens. The totals cover the whole log, which is never rotated: to count a shorter period, or to group by anything other than the model, read the log with `jq` — see [Logging](docs/01_Logging.md).
+
 Updating
 
 However psl was installed, it updates itself from the GitHub releases:
@@ -55,39 +94,13 @@ psl update
 
 It downloads the release built for your platform, checks it against the release's `SHA256SUMS` — a release it cannot verify is never installed — and swaps it in for the running executable. The old binary is only replaced once the new one is on disk and verified, so a failed update leaves the working psl in place. If psl lives somewhere that needs root, run `sudo psl update`.
 
+`psl config`, `psl usage` and `psl update` are the three arguments that are not file names — `config` edits your configuration, `usage` reports what has been spent, `update` upgrades psl itself, see Install. A file genuinely called `update` still compiles as `psl ./update`.
+
 
 Syntax
 ------
 
 No keyword, just one syntax.  
-
-File Names
-
-A PSL file is named after the language it is written in, with `.psl` on the end:
-
-```text
-fib.go.psl        Go
-bot.py.psl        Python
-Program.cs.psl    C#
-main.c.psl        C
-lib.rs.psl        Rust
-app.ts.psl        TypeScript
-```
-
-The extension in the middle is not decoration. `::` means something in most languages already, and which `::` are slots and which are the language's own syntax depends entirely on which language it is — so psl refuses a file that does not say. These are the languages it has rules for:
-
-| Language | Extensions | Example |
-| --- | --- | --- |
-| C | `.c` `.h` | `main.c.psl` |
-| C# | `.cs` `.csx` | `Program.cs.psl` |
-| Go | `.go` | `fib.go.psl` |
-| JavaScript | `.js` `.jsx` `.mjs` `.cjs` | `app.js.psl` |
-| Python | `.py` `.pyi` `.pyw` | `bot.py.psl` |
-| Rust | `.rs` | `lib.rs.psl` |
-| TypeScript | `.ts` `.tsx` `.mts` `.cts` | `app.ts.psl` |
-| Pob's Macro PSL | `.macro` | `login.macro.psl` |
-
-Any other extension compiles under the generic rules, with a warning saying so.
 
 AI Slots
 
@@ -117,7 +130,6 @@ Beyond that, a slot never straddles a comment or a string literal. A `::` inside
 
 The model sees the whole file with the slot marked, so it writes in the surrounding language and reuses names already defined there. When a slot sits alone on its line, generated lines are indented to the slot's column.
 
-
 Specifying a Model
 
 By default, `:: xxx ::` uses the default model. To specify a model, add its name before the instruction:
@@ -140,9 +152,75 @@ The compiler scans the file for the first remaining `:: xxx ::` slot, generates 
 
 Run the compiler repeatedly to resolve the rest — one slot per run, until no slots remain.  
 
+Including an Image
 
-Running a PSL File
-------------------
+Pass an image along with the file to give the AI visual context. The image is available to the slot being resolved on that run:
+
+```shell
+psl <file.psl> --image <base64_image>
+```
+
+`--image` also accepts a path to an image file or a `data:` URL, which is easier on the shell than a long base64 string:
+
+```shell
+psl ui.tsx.psl --image design.png
+```
+
+PNG, JPEG, GIF and WebP are supported.
+
+Adding a Prompt
+
+A slot says what to write; `--prompt` says what the code has to fit. Pass it whatever the model could not know from the file alone — the API being called, what each parameter means, in what units — and it is added to the system prompt for the slot resolved on that run:
+
+```shell
+psl bot.py.psl --prompt "move(x, y) takes absolute screen coordinates in pixels, origin top-left; click() takes no arguments"
+```
+
+Now `:: move to the OK button ::` produces `move(120, 480)` rather than a plausible guess at relative offsets or a fraction of the screen.
+
+The guidance describes the file, not the one slot, so it is worth repeating on every run — a file takes as many runs as it has slots. Keep a briefing in a file and hand psl the path instead:
+
+```shell
+psl bot.py.psl --prompt api.md
+```
+
+`--prompt` reads the file when its value names one, and otherwise sends the text as given. It is context, never the instruction: it does not say what to write into the slot, and it cannot override the compiler's own rules about the output.
+
+Example
+
+```go
+package main
+
+import "fmt"
+
+// :: one-line doc comment for Fib, Go style ::
+func Fib(n int) int {
+	if n < 2 {
+		return n
+	}
+	a, b := 0, 1
+	:: fill in the iterative loop and return, using a and b ::
+}
+
+func main() {
+	fmt.Println(Fib(10))
+}
+```
+
+```shell
+$ psl fib.go.psl
+psl: fib.go.psl resolved with claude-opus-5 (1204 tokens: 1180 in, 24 out) — one-line doc comment for Fib, Go style
+psl: 1 slot(s) remaining, run psl again
+$ psl fib.go.psl
+psl: fib.go.psl resolved with claude-opus-5 (1281 tokens: 1209 in, 72 out) — fill in the iterative loop and return, using a and b
+psl: no slots remaining
+```
+
+Progress goes to stderr, so stdout stays clean. The compiler exits `0` on success and when no slots remain, `1` on a compilation or configuration error, and `2` on a usage error.
+
+
+PSL Runtime
+-----------
 
 `psl run` translates the PSL source into the file its language can execute,
 writes that file beside the PSL source, and invokes the language's executor:
@@ -202,22 +280,42 @@ C and Rust are compiled to a temporary binary with `cc`/`clang`/`gcc` or
 program exits. Macro PSL and unknown extensions have no automatic executor and
 are rejected by `psl run`.
 
-Including an Image
+File Names
 
-Pass an image along with the file to give the AI visual context. The image is available to the slot being resolved on that run:
+A PSL file is named after the language it is written in, with `.psl` on the end:
 
-```shell
-psl <file.psl> --image <base64_image>
+```text
+fib.go.psl        Go
+bot.py.psl        Python
+Program.cs.psl    C#
+main.c.psl        C
+lib.rs.psl        Rust
+app.ts.psl        TypeScript
 ```
 
-`--image` also accepts a path to an image file or a `data:` URL, which is easier on the shell than a long base64 string:
+The extension in the middle is not decoration. `::` means something in most languages already, and which `::` are slots and which are the language's own syntax depends entirely on which language it is — so psl refuses a file that does not say. These are the languages it has rules for:
 
-```shell
-psl ui.tsx.psl --image design.png
-```
+| Language | Extensions | Example |
+| --- | --- | --- |
+| C | `.c` `.h` | `main.c.psl` |
+| C# | `.cs` `.csx` | `Program.cs.psl` |
+| Go | `.go` | `fib.go.psl` |
+| JavaScript | `.js` `.jsx` `.mjs` `.cjs` | `app.js.psl` |
+| Python | `.py` `.pyi` `.pyw` | `bot.py.psl` |
+| Rust | `.rs` | `lib.rs.psl` |
+| TypeScript | `.ts` `.tsx` `.mts` `.cts` | `app.ts.psl` |
+| Pob's Macro PSL | `.macro` | `login.macro.psl` |
 
-PNG, JPEG, GIF and WebP are supported.
+Any other extension compiles under the generic rules, with a warning saying so.
 
+
+.pslrc
+------
+
+`.pslrc` is where the models live — the API keys, the base URLs, and the
+options each model is given. psl reads the one in the current directory, or
+the one in your home directory. See [.pslrc](docs/02_pslrc.md) for the whole
+of it.
 
 Searching the Web
 
@@ -230,21 +328,6 @@ api_key=<your_openai_api_key>
 web_search=on
 ```
 
-```go
-// GoVersion is the Go release this project targets.
-const GoVersion = :: the current stable Go release, as a quoted version string ::
-```
-
-```shell
-$ psl version.go.psl
-psl: version.go.psl resolved with gpt-5.5 (1817 tokens: 1750 in, 67 out) — the current stable Go release, as a quoted version string
-psl: no slots remaining
-```
-
-```go
-const GoVersion = "1.26.5"
-```
-
 The model decides whether a slot needs a search; `:: fill in the iterative loop ::` is written straight out without one. Searching is off unless a section asks for it, so psl never quietly goes to the network on your money. Every query and the pages it turned up are recorded in the log, which is where a generated value can be traced back to months later.
 
 psl offers the model a `web_search` function tool and answers the calls itself, rather than reaching for a provider's own hosted search — function calling is the one way of doing this that every endpoint psl speaks to understands. The searching is done by a search model, `gpt-5-search-api` by default and any section you name instead.
@@ -254,91 +337,6 @@ One thing is worth knowing before turning it on: some models, OpenAI's `gpt-5.6`
 ```text
 :: gpt-5.5> the current stable Go release, as a quoted version string ::
 ```
-
-See [.pslrc](docs/02_pslrc.md) for the whole of it.
-
-
-Adding a Prompt
-
-A slot says what to write; `--prompt` says what the code has to fit. Pass it whatever the model could not know from the file alone — the API being called, what each parameter means, in what units — and it is added to the system prompt for the slot resolved on that run:
-
-```shell
-psl bot.py.psl --prompt "move(x, y) takes absolute screen coordinates in pixels, origin top-left; click() takes no arguments"
-```
-
-Now `:: move to the OK button ::` produces `move(120, 480)` rather than a plausible guess at relative offsets or a fraction of the screen.
-
-The guidance describes the file, not the one slot, so it is worth repeating on every run — a file takes as many runs as it has slots. Keep a briefing in a file and hand psl the path instead:
-
-```shell
-psl bot.py.psl --prompt api.md
-```
-
-`--prompt` reads the file when its value names one, and otherwise sends the text as given. It is context, never the instruction: it does not say what to write into the slot, and it cannot override the compiler's own rules about the output.
-
-
-Example
-
-```go
-package main
-
-import "fmt"
-
-// :: one-line doc comment for Fib, Go style ::
-func Fib(n int) int {
-	if n < 2 {
-		return n
-	}
-	a, b := 0, 1
-	:: fill in the iterative loop and return, using a and b ::
-}
-
-func main() {
-	fmt.Println(Fib(10))
-}
-```
-
-```shell
-$ psl fib.go.psl
-psl: fib.go.psl resolved with claude-opus-5 (1204 tokens: 1180 in, 24 out) — one-line doc comment for Fib, Go style
-psl: 1 slot(s) remaining, run psl again
-$ psl fib.go.psl
-psl: fib.go.psl resolved with claude-opus-5 (1281 tokens: 1209 in, 72 out) — fill in the iterative loop and return, using a and b
-psl: no slots remaining
-```
-
-Progress goes to stderr, so stdout stays clean. The compiler exits `0` on success and when no slots remain, `1` on a compilation or configuration error, and `2` on a usage error.
-
-
-Editing the Configuration
-
-```shell
-psl config
-```
-
-This opens the `.pslrc` psl would read here — the one in the current directory, or the one in your home directory — in `$VISUAL`, `$EDITOR`, or whichever of `vim`, `vi` and `nano` is installed. With no `.pslrc` anywhere yet, it writes the shipped example to `~/.pslrc` first, so the editor opens a file with the sections already in it and the keys left blank. When you close the editor the file is parsed, and a typo is reported there and then rather than on the next compile.
-
-
-Checking What Has Been Spent
-
-```shell
-psl usage
-```
-
-Every request psl makes is recorded in `~/.psl/psl.log`; `psl usage` adds it up and prints what each model has spent, heaviest first:
-
-```shell
-$ psl usage
-MODEL          REQUESTS  INPUT  OUTPUT  TOTAL
-claude-opus-5        12  14203    1872  16075
-gpt-5.6               3   2110     405   2515
-TOTAL                15  16313    2277  18590
-psl: /Users/you/.psl/psl.log (2026-08-10 to 2026-08-13)
-```
-
-The table goes to stdout and everything else to stderr, so it pipes into `column`, `awk` or a spreadsheet as it stands. An `ERRORS` column appears alongside `REQUESTS` once some request has failed — a failed request spends nothing, so it counts as a request without moving the tokens. The totals cover the whole log, which is never rotated: to count a shorter period, or to group by anything other than the model, read the log with `jq` — see [Logging](docs/01_Logging.md).
-
-`psl config`, `psl usage` and `psl update` are the three arguments that are not file names — `config` edits your configuration, `usage` reports what has been spent, `update` upgrades psl itself, see Install. A file genuinely called `update` still compiles as `psl ./update`.
 
 
 Documentation
