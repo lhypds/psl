@@ -30,6 +30,26 @@ func TestBuildSystem(t *testing.T) {
 	}
 }
 
+// Where the marker stands is what decides between the two rules that would
+// otherwise compete: a question inside a statement is answered as a literal,
+// and the same question standing where a statement goes is the work to write.
+// Without the position said outright, ':: calculate 360 x 360 ::' alone on its
+// line resolves to '129600' — an answer where the file needed statements.
+func TestBuildSystemSaysWhatThePositionOfTheMarkerMeans(t *testing.T) {
+	got := buildSystem("main.macro.psl", nil, slot.Slot{Instruction: "calculate 360 x 360"}, "", false, false)
+	for _, want := range []string{
+		"Where the marker stands is how much of the program it is",
+		"Alone on its line, with no expression around it to be part of, it stands for whole statements",
+		"the wording of the instruction never overrides it",
+		"where the marker stands for a value",
+		"So is every instruction at a marker that stands for statements",
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("system prompt is missing %q:\n%s", want, got)
+		}
+	}
+}
+
 func TestBuildSystemGuidance(t *testing.T) {
 	s := slot.Slot{Instruction: "move to the button"}
 	const guidance = "move() takes absolute screen coordinates in pixels"

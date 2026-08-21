@@ -63,6 +63,8 @@ Beyond that, a slot never straddles a comment or a string literal. A `::` inside
 
 The model sees the whole file with the slot marked, so it writes in the surrounding language and reuses names already defined there. When a slot sits alone on its line, generated lines are indented to the slot's column.
 
+Where the slot sits also says what it stands for. Inside a statement it stands for a value, and an instruction that asks a question is answered as that value — `if (:: zed is running ::)` becomes `if (true)`. Alone on its line it stands for whole statements, whatever its instruction sounds like: `:: calculate 360 x 360 ::` on a line of its own fills to the statements that work it out, not to `129600`, which is an answer and not a statement.
+
 Specifying a Model
 
 By default, `:: xxx ::` uses the default model. To specify a model, add its name before the instruction:
